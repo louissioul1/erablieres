@@ -122,6 +122,8 @@ function bounds(){const all=[...lines,...zones,...pts,...stations].flatMap(f=>ll
 let flyNext=false;function fitAll(){const b=bounds();if(!b)return;if(flyNext){flyNext=false;map.flyToBounds(b,{padding:[40,40],duration:1.2})}else map.fitBounds(b,{padding:[40,40]})}
 function featClick(f,e,normal){L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(shapeEdit)return;if(editMode){openFeat(f);return}normal()}
 function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers();lineLayers={};
+ if(!fitted&&bounds()){fitAll();fitted=true}
+ if(!map._loaded){const a=allLayer.flatMap(f=>ll(dec(f.c)));if(!a.length)return;map.fitBounds(L.latLngBounds(a),{padding:[40,40]})}
  zones.forEach(z=>L.polygon(ll(z.coords),{color:z.color,weight:2.5,fillColor:z.color,fillOpacity:.15}).bindTooltip(z.name,{permanent:true,direction:"center",className:"lbl"}).on("click",e=>featClick(z,e,()=>openZone(z))).addTo(gZones));
  stations.forEach(s=>L.polygon(ll(s.coords),{color:"#ffffff",weight:2,fillColor:"#1f4a33",fillOpacity:.8}).bindTooltip(s.name||"Station",{direction:"top"}).on("click",e=>featClick(s,e,()=>{})).addTo(gZones));
  lines.forEach(l=>{const st=lst(l.id).status||"ok",c=ll(l.coords);
@@ -130,8 +132,7 @@ function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers()
   const hit=L.polyline(c,{color:"#000",opacity:0,weight:22}).bindTooltip(l.label+" · "+fmtM(l.len),{sticky:true}).on("click",e=>featClick(l,e,()=>openLine(l))).addTo(gLines);
   lineLayers[l.id]={vis,hit}});
  pts.forEach(p=>{const [x,y]=p.coords[0];L.circleMarker([y,x],{radius:7,color:"#fff",weight:2,fillColor:p.color&&p.color!=="#555555"?p.color:"#1f4a33",fillOpacity:1}).bindTooltip(p.name,{permanent:true,direction:"right",className:"lbl",offset:[6,0]}).on("click",e=>featClick(p,e,()=>openPoint(p))).addTo(gPts)});
- drawOthers();
- if(!fitted){fitAll();fitted=true}}
+ drawOthers()}
 function drawOthers(){const oth=allLayer.filter(f=>sectOf(f)!==curSect&&sectors.some(x=>x.id===sectOf(f)));const named={};
  oth.forEach(f=>{const c=ll(dec(f.c)),sid=sectOf(f),go=e=>{L.DomEvent.stop(e);if(drawing||pickMode||shapeEdit||editMode)return;switchSect(sid)};
   if(f.kind==="zone"&&c.length>2){const pg=L.polygon(c,{color:"#ffd27a",weight:2,dashArray:"6 5",fillColor:"#ffd27a",fillOpacity:.08}).on("click",go).addTo(gZones);
