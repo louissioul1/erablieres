@@ -521,7 +521,7 @@ function showDraft(){const d=draft;if(d.lat!=null&&!d.lineManual){const nl=neare
 const gate=$("#gate"),gc=$("#gatecard");
 function showGate(html){gc.innerHTML=html;gate.classList.add("on")}
 function hideGate(){gate.classList.remove("on")}
-function loginForm(msg){showGate(`<h2>Érablières</h2><p class="small">Connectez-vous avec le courriel inscrit par l'administrateur.</p>
+function loginForm(msg){showGate(`<svg width="72" height="74" aria-hidden="true" style="display:block;margin:0 auto 10px"><use href="#leaf"/></svg><h2 style="text-align:center">Érablières</h2><p class="small" style="text-align:center">Connectez-vous avec le courriel inscrit par l'administrateur.</p>
  <label class="f" for="gEmail">Courriel</label><input type="email" id="gEmail" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
  <label class="f" for="gPass">Mot de passe</label><input type="password" id="gPass" autocomplete="current-password" autocapitalize="none">
  <div id="gNomBox" style="display:none"><label class="f" for="gNom">Votre nom</label><input type="text" id="gNom" autocomplete="name"></div>
