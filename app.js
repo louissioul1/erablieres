@@ -5,10 +5,15 @@ const TYPES = {
  bris:{l:"Bris de tubulure",c:"#e5432b"}, fuite:{l:"Fuite / vacuum",c:"#f08a00"},
  arbre:{l:"Arbre tombé",c:"#a0662a"}, ponceau:{l:"Ponceau / drainage",c:"#2f7bf0"},
  entaille:{l:"Entaille / chalumeau",c:"#a256d6"}, repere:{l:"Repère / point GPS",c:"#2fa85f"},
- autre:{l:"Autre",c:"#7d8a82"}};
+ autre:{l:"Autre",c:"#7d8a82"},
+ sellette:{l:"Installation de sellettes",c:"#00b3a4",w:1}, chute:{l:"Installation de chutes",c:"#6c7bff",w:1}, travail:{l:"Autre travail",c:"#b08a4a",w:1}};
+const WSTAT={en_cours:{l:"En cours",c:"#3d8bff"},a_reprendre:{l:"À reprendre",c:"#f08a00"},termine:{l:"Terminé",c:"#2fa85f"}};
+const isWork=o=>!!(TYPES[o.type]||{}).w;
+const isDone=o=>o.status==="regle"||o.status==="termine";
+const stLabel=o=>isWork(o)?(WSTAT[o.status]||WSTAT.en_cours).l:(o.status==="regle"?"réparé":"ouvert");
 const LSTAT = {ok:{l:"OK",h:"#ffffff"},verif:{l:"À vérifier",h:"#ffc21a"},bris:{l:"Bris",h:"#ff3b22"},rep:{l:"En réparation",h:"#3d8bff"}};
 const PALETTE = ["#d6782a","#e58739","#3468eb","#00a1ed","#2fa85f","#a256d6","#e5432b","#7d8a82"];
-const ACT = {signalement:{c:"#e5432b",l:"Signalement"},reparation:{c:"#2fa85f",l:"Réparation"},reouvert:{c:"#f08a00",l:"Rouvert"},ligne:{c:"#3d8bff",l:"Ligne"},carte:{c:"#a256d6",l:"Carte"},suppression:{c:"#7d8a82",l:"Suppression"}};
+const ACT = {signalement:{c:"#e5432b",l:"Signalement"},reparation:{c:"#2fa85f",l:"Réparation"},reouvert:{c:"#f08a00",l:"Rouvert"},ligne:{c:"#3d8bff",l:"Ligne"},carte:{c:"#a256d6",l:"Carte"},suppression:{c:"#7d8a82",l:"Suppression"},travail:{c:"#00b3a4",l:"Travaux"},heures:{c:"#b08a4a",l:"Heures"}};
 const BASES = {
  sat:{l:"Satellite",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",o:{maxNativeZoom:19,maxZoom:21,attribution:"Imagerie © Esri, Maxar, Earthstar Geographics"}},
  hyb:{l:"Satellite + chemins",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",over:"https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",o:{maxNativeZoom:19,maxZoom:21,attribution:"Imagerie © Esri, Maxar · chemins © Esri"}},
@@ -93,7 +98,7 @@ let tab="journal", fStat="ouvert", fType="", editMode=false, drawing=null, shape
 let lastSeen=ls.get("erab_seen","");
 const isEd=()=>role==="admin";
 const lst = id=>{const s=lstate[id];return s&&(s.season??seasonOf(s.at))===viewSeason?s:{}};
-const visObs=()=>obs.filter(o=>{const s=sOf(o);return s===viewSeason||(viewSeason===CUR&&s<CUR&&o.status!=="regle")});
+const visObs=()=>obs.filter(o=>{const s=sOf(o);return s===viewSeason||(viewSeason===CUR&&s<CUR&&!isDone(o))});
 
 // ---------- carte
 if(L.PM)L.PM.setOptIn(true);
@@ -101,16 +106,17 @@ const map = L.map("map",{pmIgnore:false,zoomControl:true,attributionControl:true
 map.attributionControl.setPrefix(false);
 map.zoomControl.setPosition("topright");
 L.control.scale({imperial:false,position:"bottomleft"}).addTo(map);
-let baseKey=ls.get("erab_base","hyb"), baseL=null, overL=null;
+let baseKey=ls.get("erab_base","hyb"), baseL=null, overL=null, baseReady=false;
+const lightBase=()=>baseKey==="plan"||baseKey==="topo";
 function setBase(k){if(!BASES[k])k="hyb";baseKey=k;ls.set("erab_base",k);if(baseL)baseL.remove();if(overL)overL.remove();overL=null;const b=BASES[k];
  baseL=L.tileLayer(b.url,{...b.o,crossOrigin:false}).addTo(map);baseL.bringToBack();if(b.over)overL=L.tileLayer(b.over,{maxNativeZoom:19,maxZoom:21}).addTo(map);
- map.getContainer().classList.toggle("base-plan",k==="plan"||k==="topo");
+ map.getContainer().classList.toggle("base-plan",k==="plan"||k==="topo");if(baseReady){drawBase();drawObs()}
  document.querySelectorAll(".bases").forEach(el=>el.innerHTML=Object.entries(BASES).map(([kk,v])=>`<button class="chip" data-base="${kk}" aria-pressed="${kk===k}">${v.l}</button>`).join(""));
  document.querySelectorAll("[data-base]").forEach(x=>x.onclick=()=>setBase(x.dataset.base))}
 setBase(baseKey);
 const gZones=L.layerGroup().addTo(map), gLines=L.layerGroup().addTo(map), gPts=L.layerGroup().addTo(map), gObs=L.layerGroup().addTo(map), gTmp=L.layerGroup().addTo(map);
 map.createPane("me").style.zIndex=650;const meR=L.svg({pane:"me"});const gMe=L.layerGroup().addTo(map);
-let lineLayers={}, fitted=false;
+let lineLayers={}, fitted=false;baseReady=true;
 const ll = c=>c.map(p=>[p[1],p[0]]);
 function bounds(){const all=[...lines,...zones,...pts,...stations].flatMap(f=>ll(f.coords));return all.length?L.latLngBounds(all):null}
 function fitAll(){const b=bounds();if(b)map.fitBounds(b,{padding:[40,40]})}
@@ -119,14 +125,15 @@ function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers()
  zones.forEach(z=>L.polygon(ll(z.coords),{color:z.color,weight:2.5,fillColor:z.color,fillOpacity:.15}).bindTooltip(z.name,{permanent:true,direction:"center",className:"lbl"}).on("click",e=>featClick(z,e,()=>openZone(z))).addTo(gZones));
  stations.forEach(s=>L.polygon(ll(s.coords),{color:"#ffffff",weight:2,fillColor:"#1f4a33",fillOpacity:.8}).bindTooltip(s.name||"Station",{direction:"top"}).on("click",e=>featClick(s,e,()=>{})).addTo(gZones));
  lines.forEach(l=>{const st=lst(l.id).status||"ok",c=ll(l.coords);
-  L.polyline(c,{color:"#000",weight:st==="ok"?5:7,opacity:.45,interactive:false}).addTo(gLines);
-  const vis=L.polyline(c,{color:LSTAT[st].h,weight:st==="ok"?3:5,opacity:1,dashArray:st==="verif"?"8 6":null,interactive:false}).addTo(gLines);
+  L.polyline(c,{color:lightBase()?"#fff":"#000",weight:st==="ok"?5:7,opacity:lightBase()?.7:.45,interactive:false}).addTo(gLines);
+  const vis=L.polyline(c,{color:st==="ok"&&lightBase()?"#1f4a33":LSTAT[st].h,weight:st==="ok"?3:5,opacity:1,dashArray:st==="verif"?"8 6":null,interactive:false}).addTo(gLines);
   const hit=L.polyline(c,{color:"#000",opacity:0,weight:22}).bindTooltip(l.label+" · "+fmtM(l.len),{sticky:true}).on("click",e=>featClick(l,e,()=>openLine(l))).addTo(gLines);
   lineLayers[l.id]={vis,hit}});
  pts.forEach(p=>{const [x,y]=p.coords[0];L.circleMarker([y,x],{radius:7,color:"#fff",weight:2,fillColor:p.color&&p.color!=="#555555"?p.color:"#1f4a33",fillOpacity:1}).bindTooltip(p.name,{permanent:true,direction:"right",className:"lbl",offset:[6,0]}).on("click",e=>featClick(p,e,()=>openPoint(p))).addTo(gPts)});
  if(!fitted){fitAll();fitted=true}}
-$("#legend").innerHTML=Object.values(LSTAT).map(s=>`<div><i style="background:${s.h};outline:1px solid #0006"></i>Ligne ${s.l.toLowerCase()}</div>`).join("")+`<div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Signalement ouvert</div><div><i style="border:3px solid #e5432b;height:12px;width:12px;border-radius:50%;background:#fff8"></i>Réparé</div><div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;outline:2px dashed #e5432b;outline-offset:1px"></i>Reporté d'une saison passée</div><div><i style="background:#2f7bf0;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Ma position</div>`;
-function drawObs(){gObs.clearLayers();visObs().forEach(o=>{if(o.lat==null)return;const t=TYPES[o.type]||TYPES.autre,done=o.status==="regle",old=sOf(o)<viewSeason;
+$("#legend").innerHTML=Object.values(LSTAT).map(s=>`<div><i style="background:${s.h};outline:1px solid #0006"></i>Ligne ${s.l.toLowerCase()}</div>`).join("")+`<div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Signalement ouvert</div><div><i style="border:3px solid #e5432b;height:12px;width:12px;border-radius:50%;background:#fff8"></i>Réparé</div><div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;outline:2px dashed #e5432b;outline-offset:1px"></i>Reporté d'une saison passée</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #fff;outline:1px solid #0006"></i>Travaux en cours</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #f08a00"></i>Travaux à reprendre</div><div><i style="background:#fff8;height:11px;width:11px;transform:rotate(45deg);border:2px solid #00b3a4"></i>Travaux terminés</div><div><i style="background:#2f7bf0;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Ma position</div>`;
+function drawObs(){gObs.clearLayers();visObs().forEach(o=>{if(o.lat==null)return;const t=TYPES[o.type]||TYPES.autre,done=isDone(o),old=sOf(o)<viewSeason;
+ if(isWork(o)){const rep=o.status==="a_reprendre";L.marker([o.lat,o.lng],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div style="width:16px;height:16px;margin:3px;transform:rotate(45deg);background:${done?"#fff8":t.c};border:3px solid ${rep?"#f08a00":done?t.c:"#fff"};box-shadow:0 1px 4px #0008"></div>`})}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l+" · "+stLabel(o),{direction:"top"}).addTo(gObs);return}
  L.circleMarker([o.lat,o.lng],{radius:done?7:10,color:done?t.c:old?t.c:"#fff",weight:done?3:3,fillColor:done?"#ffffff":t.c,fillOpacity:done?.5:1,dashArray:old?"3 3":null}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l,{direction:"top"}).addTo(gObs)})}
 map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);$("#pop").classList.remove("on")});
 $("#bFit").onclick=()=>{follow=false;locBtn();fitAll()};
@@ -141,7 +148,7 @@ const toMap=()=>menu(false);
 // ---------- secteurs (érablières)
 function switchSect(id,keepView){curSect=id;ls.set("erab_sect",id);obs=obsAll.filter(o=>sectOf(o)===curSect);derive();if(!keepView)fitted=false;drawBase();drawObs();render();sectUI();if(!keepView&&!bounds())banner("Secteur vide : ajoutez sa carte (Menu › Carte › Importer un KML, ou Modifier la carte).",6000)}
 function sectUI(){$("#sectName").textContent=sectName(curSect);$("#dTitle").textContent=sectName(curSect);
- $("#sectList").innerHTML=sectors.map(x=>`<button class="sitem" data-sect="${esc(x.id)}" aria-pressed="${x.id===curSect}"><span>${esc(x.nom)}</span><span class="meta">${obsAll.filter(o=>sectOf(o)===x.id&&o.status!=="regle"&&sOf(o)===CUR).length||""}</span></button>`).join("")+(isEd()&&store?`<button class="sitem add" id="sAdd">+ Nouveau secteur</button>`:"");
+ $("#sectList").innerHTML=sectors.map(x=>`<button class="sitem" data-sect="${esc(x.id)}" aria-pressed="${x.id===curSect}"><span>${esc(x.nom)}</span><span class="meta">${obsAll.filter(o=>sectOf(o)===x.id&&!isDone(o)&&sOf(o)===CUR).length||""}</span></button>`).join("")+(isEd()&&store?`<button class="sitem add" id="sAdd">+ Nouveau secteur</button>`:"");
  document.querySelectorAll("[data-sect]").forEach(b=>b.onclick=()=>{$("#spop").classList.remove("on");if(b.dataset.sect!==curSect)switchSect(b.dataset.sect)});
  const a=$("#sAdd");if(a)a.onclick=()=>{$("#spop").classList.remove("on");newSect()}}
 function newSect(){openSheet(head("Nouveau secteur")+`<label class="f" for="nsName">Nom de l'érablière ou du secteur</label><input type="text" id="nsName" placeholder="Ex. Érablière Saint-Esprit">
@@ -210,7 +217,7 @@ async function flushNtfy(){const a=cfg.alertes;if(flushing||!a||!a.topic)return;
  while(q.length){try{const r=await fetch("https://ntfy.sh/"+encodeURIComponent(a.topic),{method:"POST",body:q[0],headers:{Title:"Erablieres",Tags:"maple_leaf"}});if(!r.ok)break;q.shift();ls.set("erab_ntfyq",q)}catch(e){break}}flushing=false}
 function bell(){const n=acts.filter(a=>a.by!==me.uid&&a.at>lastSeen).length;const b=$("#bellN");b.textContent=n>9?"9+":n;b.style.display=n?"grid":"none"}
 const lineLabel=id=>(lines.find(l=>l.id===id)||{}).label||"";
-const actText=o=>(TYPES[o.type]||TYPES.autre).l+" signalé"+(o.line?" · "+lineLabel(o.line):"")+(o.note?" — « "+o.note.slice(0,80)+" »":"");
+const actText=o=>(TYPES[o.type]||TYPES.autre).l+(isWork(o)?" · "+stLabel(o).toLowerCase():" signalé")+(o.line?" · "+lineLabel(o.line):"")+(o.note?" — « "+o.note.slice(0,80)+" »":"");
 async function seedBase(){if(layerIsDb)return;for(const f of baseLayer){const {id,...d}=f;await store.set("couche",id,d)}layerIsDb=true}
 function startData(){
  store.sub("obs",(list,m)=>{obsAll=list.sort((a,b)=>String(b.at).localeCompare(String(a.at)));obs=obsAll.filter(o=>sectOf(o)===curSect);pending=!!m.hasPendingWrites;syncState();drawObs();render()});
@@ -218,6 +225,7 @@ function startData(){
  store.sub("couche",(list,m)=>{if(!list.length){if(m.fromCache)return;allLayer=baseLayer;layerIsDb=false;if(isEd())seedBase()}else{allLayer=list;layerIsDb=true}derive();drawBase();drawObs();render()});
  store.sub("secteurs",(list,m)=>{if(list.length)sectors=list.sort((a,b)=>(a.ord??0)-(b.ord??0));else if(!m.fromCache&&isEd())store.set("secteurs",DEF,{nom:"Montagne Noire",ord:0});if(!sectors.find(x=>x.id===curSect))curSect=sectors[0].id;sectUI()});
  store.sub("activite",(list,m)=>{const ids=new Set(acts.map(a=>a.id));const fresh=actsReady?list.filter(a=>!ids.has(a.id)&&a.by!==me.uid):[];acts=list;actsReady=true;bell();if(tab==="activite")render();if(fresh.length)banner((fresh[0].byName?fresh[0].byName+" : ":"")+fresh[0].text,6000)},{order:"at",lim:80});
+ store.sub("heures",list=>{heures=list;if(tab==="heures")render()});
  store.sub("config",list=>{cfg=Object.fromEntries(list.map(d=>[d.id,d]));flushNtfy();if(tab==="reglages")render()});
  if(isEd())store.sub("membres",list=>{membres=list;if(tab==="reglages")render()});
  sectUI();syncState();}
@@ -225,20 +233,20 @@ function startData(){
 // ---------- vues du menu
 function setTab(v){tab=v;document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));if(v==="activite"){lastSeen=new Date().toISOString();ls.set("erab_seen",lastSeen);bell()}render()}
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>setTab(b.dataset.v));
-function render(){if(!store)return;const v=$("#view");v.innerHTML=({journal:vJournal,activite:vAct,lignes:vLignes,zones:vZones,carte:vCarte,reglages:vReg})[tab]();bindView(v);hydrate(v)}
+function render(){if(!store)return;const v=$("#view");v.innerHTML=({journal:vJournal,activite:vAct,lignes:vLignes,zones:vZones,carte:vCarte,reglages:vReg,heures:vHeures})[tab]();bindView(v);hydrate(v)}
 function seasonBar(){const ss=[...new Set([CUR,...obs.map(sOf)])].sort((a,b)=>b-a);
  return `<div class="filters" style="align-items:center"><span class="small" style="margin-right:4px">Saison</span>${ss.map(s=>`<button class="chip" data-season="${s}" aria-pressed="${s===viewSeason}">${s}${s===CUR?" (en cours)":""}</button>`).join("")}</div>
  <p class="small" style="margin:-4px 0 10px">${viewSeason===CUR?`Saison ${CUR} depuis le 1<sup>er</sup> août ${CUR-1}. Les réparations des saisons passées sont archivées; les bris non réparés sont reportés.`:`Archive de la saison ${viewSeason}.`}</p>`}
-function vJournal(){const all=visObs(),open=all.filter(o=>o.status!=="regle");
- const list=all.filter(o=>(fStat==="tous"||(fStat==="ouvert"?o.status!=="regle":o.status==="regle"))&&(!fType||o.type===fType));
+function vJournal(){const all=visObs(),open=all.filter(o=>!isDone(o));
+ const list=all.filter(o=>(fStat==="tous"||(fStat==="ouvert"?!isDone(o):isDone(o)))&&(!fType||o.type===fType));
  const brisL=lines.filter(l=>["bris","rep"].includes(lst(l.id).status)).length;
- return seasonBar()+`<div class="kpis"><div class="kpi"><b>${open.length}</b><span>ouverts</span></div><div class="kpi"><b>${all.length-open.length}</b><span>réparés</span></div><div class="kpi"><b>${brisL}</b><span>lignes en bris</span></div></div>
- <div class="filters">${[["ouvert","Ouverts"],["regle","Réparés"],["tous","Tous"]].map(([k,l])=>`<button class="chip" data-fs="${k}" aria-pressed="${fStat===k}">${l}</button>`).join("")}</div>
+ return seasonBar()+`<div class="kpis"><div class="kpi"><b>${open.length}</b><span>à faire</span></div><div class="kpi"><b>${all.length-open.length}</b><span>faits</span></div><div class="kpi"><b>${brisL}</b><span>lignes en bris</span></div></div>
+ <div class="filters">${[["ouvert","À faire"],["regle","Faits"],["tous","Tous"]].map(([k,l])=>`<button class="chip" data-fs="${k}" aria-pressed="${fStat===k}">${l}</button>`).join("")}</div>
  <div class="filters">${[["","Tous types"],...Object.entries(TYPES).map(([k,t])=>[k,t.l])].map(([k,l])=>`<button class="chip" data-ft="${k}" aria-pressed="${fType===k}">${l}</button>`).join("")}</div>
- ${list.length?list.map(o=>{const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line);return `<div class="item" data-obs="${esc(o.id)}">${o.photos&&o.photos[0]?pimg(o.photos[0],"thumb"):`<div class="thumb"></div>`}<div style="flex:1"><span class="badge" style="--c:${t.c}">${t.l}</span>${o.status==="regle"?` <span class="meta">· réparé</span>`:""}${sOf(o)<viewSeason?` <span class="meta">· reporté de ${sOf(o)}</span>`:""}<p>${esc(o.note)||"<span class=meta>Sans note</span>"}</p><div class="meta">${fmtD(o.at)}${ln?" · "+esc(ln):""}${o.byName?" · "+esc(o.byName):""}</div></div></div>`}).join(""):`<div class="empty">Aucun signalement ${fStat==="ouvert"?"ouvert ":""}pour cette saison.<br>Touchez <b>Signaler</b> pour ajouter un bris, une photo ou un point GPS.</div>`}`}
+ ${list.length?list.map(o=>{const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line);return `<div class="item" data-obs="${esc(o.id)}">${o.photos&&o.photos[0]?pimg(o.photos[0],"thumb"):`<div class="thumb"></div>`}<div style="flex:1"><span class="badge" style="--c:${t.c}">${t.l}</span>${isWork(o)?` <span class="meta">· ${stLabel(o)}</span>`:o.status==="regle"?` <span class="meta">· réparé</span>`:""}${sOf(o)<viewSeason?` <span class="meta">· reporté de ${sOf(o)}</span>`:""}<p>${esc(o.note)||"<span class=meta>Sans note</span>"}</p><div class="meta">${fmtD(o.at)}${ln?" · "+esc(ln):""}${o.byName?" · "+esc(o.byName):""}</div></div></div>`}).join(""):`<div class="empty">Aucun signalement ${fStat==="ouvert"?"ouvert ":""}pour cette saison.<br>Touchez <b>Signaler</b> pour ajouter un bris, une photo ou un point GPS.</div>`}`}
 function vAct(){return `<div class="h2">Activité</div>${acts.length?acts.map(a=>{const k=ACT[a.kind]||ACT.carte;return `<div class="item" ${a.obs?`data-obs="${esc(a.obs)}"`:""}><span class="badge" style="--c:${k.c};width:104px;flex:none">${k.l}</span><div style="flex:1"><div>${esc(a.text)}</div><div class="meta">${sectors.length>1?esc(sectName(sectOf(a)))+" · ":""}${ago(a.at)}${a.byName?" · "+esc(a.byName):""}</div></div></div>`}).join(""):`<div class="empty">Rien encore. Les signalements, réparations et changements de la carte apparaîtront ici.</div>`}`}
 function vLignes(){const tot=lines.reduce((a,l)=>a+l.len,0);
- return `<div class="h2">Maîtres-lignes · saison ${viewSeason}</div><table><thead><tr><th>Ligne</th><th class="n">Longueur</th><th>État</th><th class="n">Ouverts</th></tr></thead><tbody>${lines.map(l=>{const st=lst(l.id).status||"ok",n=visObs().filter(o=>o.line===l.id&&o.status!=="regle").length;return `<tr class="click" data-line="${l.id}"><td>${esc(l.label)}</td><td class="n">${fmtM(l.len)}</td><td><span class="badge" style="--c:${st==="ok"?"#2fa85f":LSTAT[st].h}">${LSTAT[st].l}</span></td><td class="n">${n||"–"}</td></tr>`}).join("")}</tbody><tfoot><tr><td>Total · ${lines.length} lignes</td><td class="n">${fmtM(tot)}</td><td></td><td></td></tr></tfoot></table><p class="small">L'état des lignes repart à OK à chaque nouvelle saison. Longueurs à plat, sans dénivelé.</p>`}
+ return `<div class="h2">Maîtres-lignes · saison ${viewSeason}</div><table><thead><tr><th>Ligne</th><th class="n">Longueur</th><th>État</th><th class="n">Ouverts</th></tr></thead><tbody>${lines.map(l=>{const st=lst(l.id).status||"ok",n=visObs().filter(o=>o.line===l.id&&!isDone(o)).length;return `<tr class="click" data-line="${l.id}"><td>${esc(l.label)}</td><td class="n">${fmtM(l.len)}</td><td><span class="badge" style="--c:${st==="ok"?"#2fa85f":LSTAT[st].h}">${LSTAT[st].l}</span></td><td class="n">${n||"–"}</td></tr>`}).join("")}</tbody><tfoot><tr><td>Total · ${lines.length} lignes</td><td class="n">${fmtM(tot)}</td><td></td><td></td></tr></tfoot></table><p class="small">L'état des lignes repart à OK à chaque nouvelle saison. Longueurs à plat, sans dénivelé.</p>`}
 function vZones(){const ha=zones.reduce((a,z)=>a+(+z.ha||0),0),pot=zones.reduce((a,z)=>a+(+z.pot||0),0);
  return `<div class="h2">Zones</div><table><thead><tr><th>Zone</th><th class="n">ha</th><th class="n">Potentiel</th><th class="n">/ha</th></tr></thead><tbody>${zones.map(z=>`<tr class="click" data-zone="${z.id}"><td><span class="badge" style="--c:${z.color}">${esc(z.name)}</span></td><td class="n">${(+z.ha||0).toLocaleString("fr-CA")}</td><td class="n">${(+z.pot||0).toLocaleString("fr-CA")}</td><td class="n">${z.ha&&z.pot?Math.round(z.pot/z.ha):"–"}</td></tr>`).join("")}</tbody><tfoot><tr><td>Total</td><td class="n">${ha.toLocaleString("fr-CA",{maximumFractionDigits:1})}</td><td class="n">${pot.toLocaleString("fr-CA")}</td><td class="n">${ha?Math.round(pot/ha):"–"}</td></tr></tfoot></table>`}
 function vCarte(){const grp=(t,arr,lab)=>arr.length?`<div class="small" style="margin:14px 0 4px;font-weight:600">${t} (${arr.length})</div>`+arr.map(f=>`<div class="item" data-feat="${f.id}" style="padding:9px 4px"><span class="badge" style="--c:${f.color||"#33463a"}">${esc(lab(f))}</span><span class="meta" style="margin-left:auto">${f.len?fmtM(f.len):f.ha?f.ha+" ha":""}</span></div>`).join(""):"";
@@ -271,7 +279,7 @@ function vReg(){const a=cfg.alertes||{};
  <input type="text" id="mNom" placeholder="Nom (ex. Pierre)" style="margin-top:8px">
  <div class="row" style="margin-top:8px"><button class="btn pri" id="mAdd">Ajouter à l'équipe</button></div><div class="small" id="mMsg"></div>
  <p class="small">La personne crée ensuite son compte dans l'app avec ce courriel.</p>`:""}`}
-function geojson(){return JSON.stringify({type:"FeatureCollection",features:[...obs.filter(o=>o.lat!=null).map(o=>({type:"Feature",properties:{type:(TYPES[o.type]||TYPES.autre).l,note:o.note,statut:o.status==="regle"?"réparé":"ouvert",saison:sOf(o),date:o.at,par:o.byName||"",repare_le:o.doneAt||"",reparation:o.repairNote||"",ligne:lineLabel(o.line)},geometry:{type:"Point",coordinates:[o.lng,o.lat]}})),...lines.map(l=>({type:"Feature",properties:{ligne:l.label,longueur_m:Math.round(l.len),etat:LSTAT[lst(l.id).status||"ok"].l,note:lst(l.id).note||""},geometry:{type:"LineString",coordinates:l.coords}})),...zones.map(z=>({type:"Feature",properties:{zone:z.name,ha:z.ha,potentiel:z.pot},geometry:{type:"Polygon",coordinates:[z.coords]}}))]},null,1)}
+function geojson(){return JSON.stringify({type:"FeatureCollection",features:[...obs.filter(o=>o.lat!=null).map(o=>({type:"Feature",properties:{type:(TYPES[o.type]||TYPES.autre).l,note:o.note,statut:stLabel(o),saison:sOf(o),date:o.at,par:o.byName||"",repare_le:o.doneAt||"",reparation:o.repairNote||"",ligne:lineLabel(o.line)},geometry:{type:"Point",coordinates:[o.lng,o.lat]}})),...lines.map(l=>({type:"Feature",properties:{ligne:l.label,longueur_m:Math.round(l.len),etat:LSTAT[lst(l.id).status||"ok"].l,note:lst(l.id).note||""},geometry:{type:"LineString",coordinates:l.coords}})),...zones.map(z=>({type:"Feature",properties:{zone:z.name,ha:z.ha,potentiel:z.pot},geometry:{type:"Polygon",coordinates:[z.coords]}}))]},null,1)}
 function kml(){const col=h=>{h=(h||"#333333").replace("#","");return "ff"+h.slice(4,6)+h.slice(2,4)+h.slice(0,2)};const co=c=>c.map(p=>p[0]+","+p[1]+",0").join(" ");
  const pm=(f,geo,st)=>`<Placemark><name>${esc(f.name)}</name><description>${esc(f.desc||"")}</description><Style>${st}</Style>${geo}</Placemark>`;
  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(sectName(curSect))}</name>
@@ -289,6 +297,9 @@ function bindView(v){
  v.querySelectorAll("[data-zone]").forEach(b=>b.onclick=()=>{const z=zones.find(x=>x.id===b.dataset.zone);toMap();map.fitBounds(L.latLngBounds(ll(z.coords)),{padding:[30,30]})});
  v.querySelectorAll("[data-feat]").forEach(b=>b.onclick=()=>{const f=[...lines,...zones,...pts,...stations].find(x=>x.id===b.dataset.feat);if(!f)return;toMap();map.fitBounds(L.latLngBounds(ll(f.coords)),{padding:[60,60],maxZoom:19});if(isEd()){setEdit(true);openFeat(f)}});
  const on=(id,fn)=>{const e=v.querySelector(id);if(e)e.onclick=fn};
+ on("#hAdd",()=>{toMap();openHeure()});on("#hCsv",hCsv);
+ v.querySelectorAll("[data-hs]").forEach(b=>b.onclick=()=>{hScope=b.dataset.hs;render()});
+ v.querySelectorAll("[data-hid]").forEach(b=>b.onclick=()=>{const x=heures.find(y=>y.id===b.dataset.hid);if(x){toMap();openHeure(x)}});
  on("#bEdit",()=>{setEdit(!editMode);toMap()});
  on("#bSectEd",()=>{toMap();editSect()});
  on("#bSectNew",()=>{toMap();newSect()});
@@ -325,7 +336,7 @@ const gmaps=(lat,lng)=>`https://www.google.com/maps/search/?api=1&query=${lat.to
 const head=t=>`<div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div class="h2" style="margin:0">${t}</div><button class="btn" data-close>Fermer</button></div>`;
 const dist=o=>fix&&o.lat!=null?" · à "+fmtM(hav([fix.lng,fix.lat],[o.lng,o.lat]))+" de vous":"";
 
-function openObs(o){const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine=o.by===me.uid,past=sOf(o)<CUR&&o.status==="regle";
+function openObs(o){if(isWork(o))return openWork(o);const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine=o.by===me.uid,past=sOf(o)<CUR&&o.status==="regle";
  openSheet(`<div class="row" style="justify-content:space-between"><span class="badge" style="--c:${t.c};font-size:16px">${t.l}</span><button class="btn" data-close>Fermer</button></div>
  <p style="white-space:pre-wrap">${esc(o.note)||'<span class="meta">Sans note</span>'}</p>
  ${(o.photos||[]).map(p=>pimg(p,"big","Photo du signalement")).join("")}
@@ -342,7 +353,7 @@ function openObs(o){const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine
    try{const ids=await savePhotos(rf,o.id),note=$("#rNote").value.trim();
     await store.upd("obs",o.id,{status:"regle",doneAt:new Date().toISOString(),doneBy:me.uid,doneByName:me.nom,doneSeason:CUR,repairNote:note,repairPhotos:ids});
     logAct("reparation","Réparé : "+t.l+(ln?" · "+ln:"")+(note?" — « "+note.slice(0,80)+" »":""),{obs:o.id});
-    if(o.line){const left=visObs().filter(x=>x.line===o.line&&x.id!==o.id&&x.status!=="regle").length,s=lst(o.line);
+    if(o.line){const left=visObs().filter(x=>x.line===o.line&&x.id!==o.id&&!isDone(x)).length,s=lst(o.line);
      if(!left&&["bris","rep","verif"].includes(s.status)){const {id,...rest}=s;await store.set("lignes",o.line,{...rest,status:"ok",season:CUR,at:new Date().toISOString(),by:me.uid})}}
     closeSheet()}catch(e){ok.disabled=false;ok.textContent="Confirmer la réparation";$("#rErr").textContent="Enregistrement impossible : "+(e.message||e)}}};
  const ro=$("#bReopen");if(ro)ro.onclick=async()=>{await store.upd("obs",o.id,{status:"ouvert",season:CUR});logAct("reouvert","Rouvert : "+t.l+(ln?" · "+ln:""),{obs:o.id});closeSheet()};
@@ -350,7 +361,7 @@ function openObs(o){const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine
   $("#bDel2").onclick=async()=>{await store.del("obs",o.id);for(const p of [...(o.photos||[]),...(o.repairPhotos||[])])await store.del("photos",p);logAct("suppression","Supprimé : "+t.l+(ln?" · "+ln:""));closeSheet()}};
 }
 function openLine(l){const s=lst(l.id),st=s.status||"ok",n=visObs().filter(o=>o.line===l.id);
- openSheet(head(esc(l.label))+`<div class="meta">${fmtM(l.len)} · saison ${viewSeason} · ${n.filter(o=>o.status!=="regle").length} signalement(s) ouvert(s) sur ${n.length}</div>
+ openSheet(head(esc(l.label))+`<div class="meta">${fmtM(l.len)} · saison ${viewSeason} · ${n.filter(o=>!isDone(o)).length} signalement(s) ouvert(s) sur ${n.length}</div>
  <label class="f">État de la ligne</label><div class="types">${Object.entries(LSTAT).map(([k,v])=>`<button class="chip" data-st="${k}" aria-pressed="${k===st}">${v.l}</button>`).join("")}</div>
  <label class="f" for="lnote">Note</label><textarea id="lnote" placeholder="Ex. vacuum faible au bout, raccord à changer">${esc(s.note||"")}</textarea>
  ${s.at?`<div class="small">Mis à jour ${fmtD(s.at)}</div>`:""}
@@ -361,6 +372,60 @@ function openLine(l){const s=lst(l.id),st=s.status||"ok",n=visObs().filter(o=>o.
 }
 function openZone(z){const b=L.latLngBounds(ll(z.coords));openSheet(head(esc(z.name))+`<p>${z.ha} ha · potentiel ${(+z.pot||0).toLocaleString("fr-CA")} entailles${z.ha&&z.pot?" ("+Math.round(z.pot/z.ha)+"/ha)":""}</p>${z.desc?`<p class="small">${esc(z.desc)}</p>`:""}<p class="meta">${visObs().filter(o=>o.lat!=null&&b.contains([o.lat,o.lng])).length} signalement(s) dans le secteur cette saison</p>`)}
 function openPoint(p){const [x,y]=p.coords[0];openSheet(head(esc(p.name))+`${p.desc?`<p>${esc(p.desc)}</p>`:""}<div class="pos">${y.toFixed(6)}, ${x.toFixed(6)}${dist({lat:y,lng:x})} · <a href="${gmaps(y,x)}" target="_blank" rel="noopener">Google Maps</a></div>`)}
+
+function openWork(o){const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine=o.by===me.uid,ws=WSTAT[o.status]||WSTAT.en_cours,past=sOf(o)<CUR&&isDone(o);
+ const hist=(o.suivi||[]).slice().reverse();
+ openSheet(`<div class="row" style="justify-content:space-between"><span class="badge" style="--c:${t.c};font-size:16px">${t.l}</span><button class="btn" data-close>Fermer</button></div>
+ <div class="row" style="margin:10px 0"><span class="badge" style="--c:${ws.c};font-size:15px">${ws.l}</span>${ln?`<span class="meta">${esc(ln)}</span>`:""}</div>
+ ${(o.photos||[]).map(p=>pimg(p,"big","Photo")).join("")}
+ ${o.lat!=null?`<div class="pos">Point d'arrêt : ${o.lat.toFixed(6)}, ${o.lng.toFixed(6)}${dist(o)} · <a href="${gmaps(o.lat,o.lng)}" target="_blank" rel="noopener">Google Maps</a></div>`:""}
+ <label class="f">Historique de l'avancement</label>
+ ${hist.length?hist.map(h=>`<div class="item" style="cursor:default"><span class="badge" style="--c:${(WSTAT[h.status]||WSTAT.en_cours).c};width:96px;flex:none">${(WSTAT[h.status]||WSTAT.en_cours).l}</span><div style="flex:1">${h.note?`<div style="white-space:pre-wrap">${esc(h.note)}</div>`:""}<div class="meta">${fmtD(h.at)}${h.byName?" · "+esc(h.byName):""}</div></div></div>`).join(""):`<p class="meta">${esc(o.note)||"Aucune note"}</p>`}
+ ${!past?`<label class="f">Mettre à jour</label><div class="types">${Object.entries(WSTAT).map(([k,v])=>`<button class="chip" data-ws="${k}" aria-pressed="${k===o.status}">${v.l}</button>`).join("")}</div>
+ <label class="f" for="wNote">Où on est rendu</label><textarea id="wNote" placeholder="Ex. chutes installées jusqu'au ruisseau, reprendre côté nord"></textarea>
+ <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="wGps" style="width:22px;height:22px" ${fix?"checked":""}> Déplacer le point d'arrêt à ma position GPS</label>
+ <div class="row" style="margin-top:14px"><button class="btn pri" id="wOk" style="flex:1">Enregistrer l'avancement</button>${mine||isEd()?`<button class="btn red" id="bDel">Supprimer</button>`:""}</div><div id="conf"></div><div class="err" id="wErr"></div>`:""}`);
+ let pick=o.status in WSTAT?o.status:"en_cours";sheet.querySelectorAll("[data-ws]").forEach(b=>b.onclick=()=>{pick=b.dataset.ws;sheet.querySelectorAll("[data-ws]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+ const ok=$("#wOk");if(ok)ok.onclick=async()=>{ok.disabled=true;try{const note=$("#wNote").value.trim();let pos={};
+   if($("#wGps").checked){try{const p=await waitFix();pos={lat:+p.lat.toFixed(7),lng:+p.lng.toFixed(7)}}catch(e){$("#wErr").textContent="GPS non disponible : le point d'arrêt n'a pas bougé."}}
+   const h={at:new Date().toISOString(),by:me.uid,byName:me.nom,status:pick,note,...pos};
+   await store.upd("obs",o.id,{status:pick,note:note||o.note||"",suivi:[...(o.suivi||[]),h],season:CUR,...pos});
+   logAct("travail",t.l+" · "+WSTAT[pick].l.toLowerCase()+(ln?" · "+ln:"")+(note?" — « "+note.slice(0,80)+" »":""),{obs:o.id});closeSheet()}catch(e){ok.disabled=false;$("#wErr").textContent="Enregistrement impossible : "+(e.message||e)}};
+ const dl_=$("#bDel");if(dl_)dl_.onclick=()=>{$("#conf").innerHTML=`<div class="row" style="margin-top:10px"><span>Supprimer définitivement ce travail ?</span><button class="btn red" id="bDel2">Oui, supprimer</button></div>`;
+  $("#bDel2").onclick=async()=>{await store.del("obs",o.id);for(const p of (o.photos||[]))await store.del("photos",p);logAct("suppression","Supprimé : "+t.l+(ln?" · "+ln:""));closeSheet()}};
+}
+
+// ---------- heures travaillées
+let heures=[], hScope="moi";
+const TASKS=["Installation de sellettes","Installation de chutes","Entaillage","Entretien de tubulure","Réparation de bris","Bûchage / dégagement","Station de pompage","Évaporation / cabane","Lavage","Autre"];
+const hFmt=h=>(Math.round(h*100)/100).toLocaleString("fr-CA")+" h";
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+function hVis(){return heures.filter(x=>(x.season??seasonOf(x.date))===viewSeason&&(hScope!=="moi"||x.by===me.uid))}
+function vHeures(){const L_=hVis().sort((a,b)=>String(b.date+b.at).localeCompare(String(a.date+a.at)));const tot=L_.reduce((a,x)=>a+(+x.h||0),0);
+ const wk=new Date();wk.setDate(wk.getDate()-((wk.getDay()+6)%7));const wkS=wk.toISOString().slice(0,10);const tw=L_.filter(x=>x.date>=wkS).reduce((a,x)=>a+(+x.h||0),0);
+ const by=(f)=>{const m={};L_.forEach(x=>{const k=f(x)||"—";m[k]=(m[k]||0)+(+x.h||0)});return Object.entries(m).sort((a,b)=>b[1]-a[1])};
+ return `<div class="h2">Heures travaillées</div>
+ <div class="row" style="margin-bottom:10px"><button class="btn pri" id="hAdd" style="flex:1">+ Ajouter des heures</button></div>
+ <div class="filters">${isEd()?[["moi","Mes heures"],["tous","Toute l'équipe"]].map(([k,l])=>`<button class="chip" data-hs="${k}" aria-pressed="${hScope===k}">${l}</button>`).join(""):""}<span class="small" style="align-self:center">Saison ${viewSeason}</span></div>
+ <div class="kpis"><div class="kpi"><b>${hFmt(tot)}</b><span>cette saison</span></div><div class="kpi"><b>${hFmt(tw)}</b><span>cette semaine</span></div><div class="kpi"><b>${L_.length}</b><span>entrées</span></div></div>
+ ${hScope==="tous"&&isEd()?`<label class="f">Par personne</label><table><tbody>${by(x=>x.byName).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${hFmt(v)}</td></tr>`).join("")}</tbody></table>`:""}
+ <label class="f">Par tâche</label><table><tbody>${by(x=>x.task).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${hFmt(v)}</td></tr>`).join("")||`<tr><td class="meta">Aucune heure entrée</td></tr>`}</tbody></table>
+ <label class="f">Entrées</label>
+ ${L_.map(x=>`<div class="item" data-hid="${esc(x.id)}"><div style="flex:1"><b>${hFmt(+x.h||0)}</b> · ${esc(x.task||"")}${x.sect&&sectors.length>1?` <span class="meta">· ${esc(sectName(x.sect))}</span>`:""}<div class="meta">${esc(x.date)}${hScope==="tous"?" · "+esc(x.byName||""):""}${x.note?" · "+esc(x.note):""}</div></div></div>`).join("")||`<div class="empty">Aucune heure pour cette saison.</div>`}
+ <div class="row" style="margin-top:14px"><button class="btn" id="hCsv">Exporter (Excel / CSV)</button></div>`}
+function openHeure(x){const n=!x;x=x||{date:today(),h:"",task:TASKS[0],note:"",sect:curSect};const mine=n||x.by===me.uid;
+ openSheet(head(n?"Ajouter des heures":"Heures")+`<div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label class="f" for="hDate">Date</label><input type="text" id="hDate" value="${esc(x.date)}" inputmode="numeric" placeholder="AAAA-MM-JJ"></div><div style="flex:1"><label class="f" for="hH">Heures</label><input type="number" id="hH" step="0.25" min="0" max="24" inputmode="decimal" value="${esc(x.h)}" placeholder="Ex. 7.5"></div></div>
+ <label class="f" for="hTask">Tâche</label><select id="hTask">${TASKS.map(t=>`<option ${t===x.task?"selected":""}>${t}</option>`).join("")}</select>
+ <label class="f" for="hSect">Érablière / secteur</label><select id="hSect">${sectors.map(s=>`<option value="${esc(s.id)}" ${s.id===(x.sect||curSect)?"selected":""}>${esc(s.nom)}</option>`).join("")}</select>
+ <label class="f" for="hNote">Note</label><input type="text" id="hNote" value="${esc(x.note||"")}" placeholder="Ex. zone 2, lignes 7 à 9">
+ ${mine||isEd()?`<div class="row" style="margin-top:16px"><button class="btn pri" id="hOk" style="flex:1">Enregistrer</button>${!n?`<button class="btn red" id="hDel">Supprimer</button>`:""}</div>`:""}<div class="err" id="hErr"></div>`);
+ const ok=$("#hOk");if(ok)ok.onclick=async()=>{const date=$("#hDate").value.trim(),h=+$("#hH").value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){$("#hErr").textContent="Date au format AAAA-MM-JJ.";return}if(!(h>0&&h<=24)){$("#hErr").textContent="Entrez un nombre d'heures entre 0 et 24.";return}
+  ok.disabled=true;const v={date,h,task:$("#hTask").value,sect:$("#hSect").value,note:$("#hNote").value.trim(),season:seasonOf(date+"T12:00"),by:n?me.uid:x.by,byName:n?me.nom:x.byName,at:x.at||new Date().toISOString()};
+  await store.set("heures",n?nid("h"):x.id,v);if(n)logAct("heures",hFmt(h)+" · "+v.task+(v.note?" — "+v.note.slice(0,60):""));closeSheet()};
+ const del=$("#hDel");if(del)del.onclick=async()=>{if(!del.dataset.ok){del.dataset.ok=1;del.textContent="Confirmer";return}await store.del("heures",x.id);closeSheet()}}
+function hCsv(){const rows=[["Date","Personne","Heures","Tâche","Secteur","Note"],...hVis().sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[x.date,x.byName||"",String(x.h).replace(".",","),x.task||"",sectName(x.sect||DEF),x.note||""])];
+ download("heures-saison-"+viewSeason+".csv","\ufeff"+rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(";")).join("\r\n"),"text/csv")}
 
 // ---------- édition de la carte
 function setEdit(on){editMode=on;if(!on){stopDraw();stopShape()}$("#etool").classList.toggle("on",on&&!drawing&&!shapeEdit);$("#bAdd").style.display=on?"none":"";banner(on?"Mode édition de la carte":"",on?2500:0);if(tab==="carte")render()}
@@ -421,17 +486,20 @@ function openAdd(pos,lineId){draft={type:"bris",note:"",files:[],lat:pos?.lat??n
 $("#bAdd").onclick=()=>openAdd(null);
 function showDraft(){const d=draft;if(d.lat!=null&&!d.lineManual){const nl=nearestLine(d.lat,d.lng);if(nl.line&&nl.d<60)d.line=nl.line.id}
  openSheet(`<div class="row" style="justify-content:space-between"><div class="h2" style="margin:0">Nouveau signalement</div><button class="btn" data-close>Annuler</button></div>
- <label class="f">Type</label><div class="types">${Object.entries(TYPES).map(([k,t])=>`<button class="chip" data-ty="${k}" aria-pressed="${d.type===k}">${t.l}</button>`).join("")}</div>
+ <label class="f">Bris ou problème</label><div class="types">${Object.entries(TYPES).filter(([k,t])=>!t.w).map(([k,t])=>`<button class="chip" data-ty="${k}" aria-pressed="${d.type===k}">${t.l}</button>`).join("")}</div>
+ <label class="f">Travaux</label><div class="types">${Object.entries(TYPES).filter(([k,t])=>t.w).map(([k,t])=>`<button class="chip" data-ty="${k}" aria-pressed="${d.type===k}">${t.l}</button>`).join("")}</div>
+ ${TYPES[d.type]&&TYPES[d.type].w?`<label class="f">Avancement</label><div class="types">${Object.entries(WSTAT).map(([k,v])=>`<button class="chip" data-ws="${k}" aria-pressed="${(d.wstat||"en_cours")===k}">${v.l}</button>`).join("")}</div>`:""}
  <label class="f">Position</label><div class="pos">${d.lat!=null?`${d.lat.toFixed(6)}, ${d.lng.toFixed(6)} <span class="meta">· ${esc(d.src)}</span>`:`<span class="meta">Aucune position</span>`}</div>
  <div class="row" style="margin-top:8px"><button class="btn pri" id="dGps">Ma position GPS</button><button class="btn" id="dMap">Toucher la carte</button><button class="btn" id="dMan">Coordonnées</button></div>
  <div id="manBox" style="display:none" class="row"><input type="text" id="dLL" inputmode="decimal" placeholder="46.2657, -74.2446" style="flex:1;margin-top:8px"><button class="btn" id="dLLok" style="margin-top:8px">OK</button></div>
  <div class="err" id="perr"></div>
  <label class="f">Photos</label><label class="btn">Prendre ou ajouter des photos<input type="file" id="dPh" accept="image/*" multiple></label><div class="photos">${d.files.map(p=>`<img alt="" src="${p}">`).join("")}</div>
  <label class="f" for="dLine">Ligne</label><select id="dLine"><option value="">Aucune</option>${lines.map(l=>`<option value="${l.id}" ${d.line===l.id?"selected":""}>${esc(l.label)}</option>`).join("")}</select>
- <label class="f" for="dNote">Note</label><textarea id="dNote" placeholder="Ex. tubulure 5/16 coupée par un chevreuil, 3 m du raccord">${esc(d.note)}</textarea>
+ <label class="f" for="dNote">${TYPES[d.type]&&TYPES[d.type].w?"Où on est rendu / note":"Note"}</label><textarea id="dNote" placeholder="${TYPES[d.type]&&TYPES[d.type].w?"Ex. sellettes posées jusqu'à la ligne 7, reste le haut de la zone 2":"Ex. tubulure 5/16 coupée par un chevreuil, 3 m du raccord"}">${esc(d.note)}</textarea>
  <div class="row" style="margin-top:16px"><button class="btn pri" id="dSave" style="flex:1">Enregistrer</button></div><div class="err" id="serr"></div>`);
  const keep=()=>{d.note=$("#dNote").value;d.line=$("#dLine").value||null};
  sheet.querySelectorAll("[data-ty]").forEach(b=>b.onclick=()=>{keep();d.type=b.dataset.ty;showDraft()});
+ sheet.querySelectorAll("[data-ws]").forEach(b=>b.onclick=()=>{keep();d.wstat=b.dataset.ws;showDraft()});
  $("#dLine").onchange=()=>{d.lineManual=true};
  $("#dMap").onclick=()=>{keep();pickMode=true;scrim.classList.remove("on");map.getContainer().style.cursor="crosshair";banner("Touchez la carte à l'endroit du signalement")};
  $("#dGps").onclick=async()=>{keep();$("#perr").textContent="Recherche du GPS…";try{const p=await waitFix();Object.assign(d,{lat:p.lat,lng:p.lng,src:"GPS ±"+Math.round(p.acc)+" m",lineManual:false});showDraft()}catch(e){$("#perr").textContent=fix===null&&watchId===null?gpsErr({code:1}):"Pas de signal GPS. Touchez la carte pour placer le point."}};
@@ -443,8 +511,8 @@ function showDraft(){const d=draft;if(d.lat!=null&&!d.lineManual){const nl=neare
  $("#dSave").onclick=async()=>{keep();if(d.lat==null){$("#serr").textContent="Ajoutez une position (GPS, carte ou coordonnées).";return}
   const btn=$("#dSave");btn.disabled=true;btn.textContent="Enregistrement…";
   try{const id=nid("o"),ids=await savePhotos(d.files,id);
-   const rec={sect:curSect,type:d.type,note:d.note.trim(),lat:+d.lat.toFixed(7),lng:+d.lng.toFixed(7),line:d.line||null,status:"ouvert",at:new Date().toISOString(),season:CUR,by:me.uid,byName:me.nom,photos:ids};
-   await store.set("obs",id,rec);logAct("signalement",actText(rec),{obs:id});
+   const w=isWork({type:d.type}),ws=d.wstat||"en_cours";const rec={sect:curSect,type:d.type,note:d.note.trim(),lat:+d.lat.toFixed(7),lng:+d.lng.toFixed(7),line:d.line||null,status:w?ws:"ouvert",...(w?{suivi:[{at:new Date().toISOString(),by:me.uid,byName:me.nom,status:ws,note:d.note.trim(),lat:+d.lat.toFixed(7),lng:+d.lng.toFixed(7)}]}:{}),at:new Date().toISOString(),season:CUR,by:me.uid,byName:me.nom,photos:ids};
+   await store.set("obs",id,rec);logAct(isWork(rec)?"travail":"signalement",actText(rec),{obs:id});
    if(viewSeason!==CUR){viewSeason=CUR;renderAll()}closeSheet();if(!navigator.onLine)banner("Hors ligne : enregistré sur le téléphone, envoi automatique au retour du réseau.",5000)}
   catch(e){btn.disabled=false;btn.textContent="Enregistrer";$("#serr").textContent="Enregistrement impossible : "+(e.message||e)}};
 }
@@ -453,9 +521,9 @@ function showDraft(){const d=draft;if(d.lat!=null&&!d.lineManual){const nl=neare
 const gate=$("#gate"),gc=$("#gatecard");
 function showGate(html){gc.innerHTML=html;gate.classList.add("on")}
 function hideGate(){gate.classList.remove("on")}
-function loginForm(msg){showGate(`<h2>Érablière Montagne Noire</h2><p class="small">Connectez-vous avec le courriel inscrit par l'administrateur.</p>
- <label class="f" for="gEmail">Courriel</label><input type="email" id="gEmail" autocomplete="email">
- <label class="f" for="gPass">Mot de passe</label><input type="password" id="gPass" autocomplete="current-password">
+function loginForm(msg){showGate(`<h2>Érablières</h2><p class="small">Connectez-vous avec le courriel inscrit par l'administrateur.</p>
+ <label class="f" for="gEmail">Courriel</label><input type="email" id="gEmail" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+ <label class="f" for="gPass">Mot de passe</label><input type="password" id="gPass" autocomplete="current-password" autocapitalize="none">
  <div id="gNomBox" style="display:none"><label class="f" for="gNom">Votre nom</label><input type="text" id="gNom" autocomplete="name"></div>
  <div class="row" style="margin-top:16px"><button class="btn pri" id="gIn" style="flex:1">Se connecter</button></div>
  <div class="row" style="margin-top:8px"><button class="btn" id="gNew" style="flex:1">Créer mon compte</button><button class="btn" id="gForgot">Mot de passe oublié</button></div>
