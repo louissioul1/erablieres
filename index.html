@@ -106,6 +106,10 @@ label.f{display:block;font-weight:600;font-size:14px;margin:14px 0 6px}
 input[type=text],input[type=email],input[type=password],input[type=number],textarea,select{width:100%;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);min-height:46px}
 textarea{min-height:84px;resize:vertical}
 .types{display:flex;flex-wrap:wrap;gap:6px}
+.pico{border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 5px #0009;display:grid;place-items:center;box-sizing:border-box}
+.icogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.icob{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--chip);border-radius:12px;padding:6px 8px;font-size:13px;text-align:left;cursor:pointer;color:inherit}
+.icob[aria-pressed=true]{outline:3px solid var(--ink);background:var(--card,#fff)}
 .pos{background:var(--chip);border-radius:10px;padding:10px 12px;font-variant-numeric:tabular-nums}
 .photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .photos img{width:84px;height:84px;object-fit:cover;border-radius:8px}
@@ -151,7 +155,7 @@ textarea{min-height:84px;resize:vertical}
  <button class="mbtn" id="bFit" title="Voir toute l'érablière" aria-label="Voir toute l'érablière"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
 </div>
 <div class="gpsinfo" id="gpsinfo"></div>
-<div class="etool" id="etool"><button class="btn" data-draw="ligne">+ Ligne</button><button class="btn" data-draw="gps">+ Tracé GPS</button><button class="btn" data-draw="zone">+ Zone</button><button class="btn" data-draw="point">+ Point</button><button class="btn pri" id="eDone">Terminer</button></div>
+<div class="etool" id="etool"><button class="btn" data-draw="ligne">+ Ligne</button><button class="btn" data-draw="gps">+ Tracé GPS</button><button class="btn" data-draw="zone">+ Zone</button><button class="btn" data-draw="point">+ Installation</button><button class="btn pri" id="eDone">Terminer</button></div>
 <div class="etool" id="dbar"></div>
 <button class="fab" id="bAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>Signaler</button>
 <div class="dscrim" id="dscrim"></div>
