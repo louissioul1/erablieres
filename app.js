@@ -119,7 +119,7 @@ map.createPane("me").style.zIndex=650;const meR=L.svg({pane:"me"});const gMe=L.l
 let lineLayers={}, fitted=false;baseReady=true;
 const ll = c=>c.map(p=>[p[1],p[0]]);
 function bounds(){const all=[...lines,...zones,...pts,...stations].flatMap(f=>ll(f.coords));return all.length?L.latLngBounds(all):null}
-function fitAll(){const b=bounds();if(b)map.fitBounds(b,{padding:[40,40]})}
+let flyNext=false;function fitAll(){const b=bounds();if(!b)return;if(flyNext){flyNext=false;map.flyToBounds(b,{padding:[40,40],duration:1.2})}else map.fitBounds(b,{padding:[40,40]})}
 function featClick(f,e,normal){L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(shapeEdit)return;if(editMode){openFeat(f);return}normal()}
 function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers();lineLayers={};
  zones.forEach(z=>L.polygon(ll(z.coords),{color:z.color,weight:2.5,fillColor:z.color,fillOpacity:.15}).bindTooltip(z.name,{permanent:true,direction:"center",className:"lbl"}).on("click",e=>featClick(z,e,()=>openZone(z))).addTo(gZones));
@@ -130,7 +130,15 @@ function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers()
   const hit=L.polyline(c,{color:"#000",opacity:0,weight:22}).bindTooltip(l.label+" · "+fmtM(l.len),{sticky:true}).on("click",e=>featClick(l,e,()=>openLine(l))).addTo(gLines);
   lineLayers[l.id]={vis,hit}});
  pts.forEach(p=>{const [x,y]=p.coords[0];L.circleMarker([y,x],{radius:7,color:"#fff",weight:2,fillColor:p.color&&p.color!=="#555555"?p.color:"#1f4a33",fillOpacity:1}).bindTooltip(p.name,{permanent:true,direction:"right",className:"lbl",offset:[6,0]}).on("click",e=>featClick(p,e,()=>openPoint(p))).addTo(gPts)});
+ drawOthers();
  if(!fitted){fitAll();fitted=true}}
+function drawOthers(){const oth=allLayer.filter(f=>sectOf(f)!==curSect&&sectors.some(x=>x.id===sectOf(f)));const named={};
+ oth.forEach(f=>{const c=ll(dec(f.c)),sid=sectOf(f),go=e=>{L.DomEvent.stop(e);if(drawing||pickMode||shapeEdit||editMode)return;switchSect(sid)};
+  if(f.kind==="zone"&&c.length>2){const pg=L.polygon(c,{color:"#ffd27a",weight:2,dashArray:"6 5",fillColor:"#ffd27a",fillOpacity:.08}).on("click",go).addTo(gZones);
+   if(!named[sid]){named[sid]=1;pg.bindTooltip(sectName(sid)+" ›",{permanent:true,direction:"center",className:"lbl lblo",interactive:true})}}
+  else if(f.kind==="ligne"&&c.length>1)L.polyline(c,{color:"#ffffff",weight:2,opacity:.55,interactive:false}).addTo(gLines)});
+ sectors.filter(x=>x.id!==curSect&&!named[x.id]).forEach(x=>{const fs=oth.filter(f=>sectOf(f)===x.id);if(!fs.length)return;const b=L.latLngBounds(fs.flatMap(f=>ll(dec(f.c))));
+  L.marker(b.getCenter(),{icon:L.divIcon({className:"",iconSize:[0,0],html:""})}).bindTooltip(x.nom+" ›",{permanent:true,direction:"center",className:"lbl lblo",interactive:true}).on("click",e=>{L.DomEvent.stop(e);switchSect(x.id)}).addTo(gPts)})}
 $("#legend").innerHTML=Object.values(LSTAT).map(s=>`<div><i style="background:${s.h};outline:1px solid #0006"></i>Ligne ${s.l.toLowerCase()}</div>`).join("")+`<div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Signalement ouvert</div><div><i style="border:3px solid #e5432b;height:12px;width:12px;border-radius:50%;background:#fff8"></i>Réparé</div><div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;outline:2px dashed #e5432b;outline-offset:1px"></i>Reporté d'une saison passée</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #fff;outline:1px solid #0006"></i>Travaux en cours</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #f08a00"></i>Travaux à reprendre</div><div><i style="background:#fff8;height:11px;width:11px;transform:rotate(45deg);border:2px solid #00b3a4"></i>Travaux terminés</div><div><i style="background:#2f7bf0;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Ma position</div>`;
 function drawObs(){gObs.clearLayers();visObs().forEach(o=>{if(o.lat==null)return;const t=TYPES[o.type]||TYPES.autre,done=isDone(o),old=sOf(o)<viewSeason;
  if(isWork(o)){const rep=o.status==="a_reprendre";L.marker([o.lat,o.lng],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div style="width:16px;height:16px;margin:3px;transform:rotate(45deg);background:${done?"#fff8":t.c};border:3px solid ${rep?"#f08a00":done?t.c:"#fff"};box-shadow:0 1px 4px #0008"></div>`})}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l+" · "+stLabel(o),{direction:"top"}).addTo(gObs);return}
@@ -146,7 +154,7 @@ $("#bBell").onclick=()=>{setTab("activite");menu(true)};
 const toMap=()=>menu(false);
 
 // ---------- secteurs (érablières)
-function switchSect(id,keepView){curSect=id;ls.set("erab_sect",id);obs=obsAll.filter(o=>sectOf(o)===curSect);derive();if(!keepView)fitted=false;drawBase();drawObs();render();sectUI();if(!keepView&&!bounds())banner("Secteur vide : ajoutez sa carte (Menu › Carte › Importer un KML, ou Modifier la carte).",6000)}
+function switchSect(id,keepView){curSect=id;ls.set("erab_sect",id);obs=obsAll.filter(o=>sectOf(o)===curSect);derive();if(!keepView){fitted=false;flyNext=true}drawBase();drawObs();render();sectUI();if(!keepView&&!bounds())banner("Secteur vide : ajoutez sa carte (Menu › Carte › Importer un KML, ou Modifier la carte).",6000)}
 function sectUI(){$("#sectName").textContent=sectName(curSect);$("#dTitle").textContent=sectName(curSect);
  $("#sectList").innerHTML=sectors.map(x=>`<button class="sitem" data-sect="${esc(x.id)}" aria-pressed="${x.id===curSect}"><span>${esc(x.nom)}</span><span class="meta">${obsAll.filter(o=>sectOf(o)===x.id&&!isDone(o)&&sOf(o)===CUR).length||""}</span></button>`).join("")+(isEd()&&store?`<button class="sitem add" id="sAdd">+ Nouveau secteur</button>`:"");
  document.querySelectorAll("[data-sect]").forEach(b=>b.onclick=()=>{$("#spop").classList.remove("on");if(b.dataset.sect!==curSect)switchSect(b.dataset.sect)});
@@ -223,7 +231,7 @@ function startData(){
  store.sub("obs",(list,m)=>{obsAll=list.sort((a,b)=>String(b.at).localeCompare(String(a.at)));obs=obsAll.filter(o=>sectOf(o)===curSect);pending=!!m.hasPendingWrites;syncState();drawObs();render()});
  store.sub("lignes",list=>{lstate={};list.forEach(d=>lstate[d.id]=d);drawBase();render()});
  store.sub("couche",(list,m)=>{if(!list.length){if(m.fromCache)return;allLayer=baseLayer;layerIsDb=false;if(isEd())seedBase()}else{allLayer=list;layerIsDb=true}derive();drawBase();drawObs();render()});
- store.sub("secteurs",(list,m)=>{if(list.length)sectors=list.sort((a,b)=>(a.ord??0)-(b.ord??0));else if(!m.fromCache&&isEd())store.set("secteurs",DEF,{nom:"Montagne Noire",ord:0});if(!sectors.find(x=>x.id===curSect))curSect=sectors[0].id;sectUI()});
+ store.sub("secteurs",(list,m)=>{if(list.length)sectors=list.sort((a,b)=>(a.ord??0)-(b.ord??0));else if(!m.fromCache&&isEd())store.set("secteurs",DEF,{nom:"Montagne Noire",ord:0});if(!sectors.find(x=>x.id===curSect))curSect=sectors[0].id;sectUI();try{drawBase()}catch(e){}});
  store.sub("activite",(list,m)=>{const ids=new Set(acts.map(a=>a.id));const fresh=actsReady?list.filter(a=>!ids.has(a.id)&&a.by!==me.uid):[];acts=list;actsReady=true;bell();if(tab==="activite")render();if(fresh.length)banner((fresh[0].byName?fresh[0].byName+" : ":"")+fresh[0].text,6000)},{order:"at",lim:80});
  store.sub("heures",list=>{heures=list;if(tab==="heures")render()});
  store.sub("config",list=>{cfg=Object.fromEntries(list.map(d=>[d.id,d]));flushNtfy();if(tab==="reglages")render()});
