@@ -7,6 +7,10 @@ const TYPES = {
  entaille:{l:"Entaille / chalumeau",c:"#a256d6"}, repere:{l:"Repère / point GPS",c:"#2fa85f"},
  autre:{l:"Autre",c:"#7d8a82"},
  sellette:{l:"Installation de sellettes",c:"#00b3a4",w:1}, chute:{l:"Installation de chutes",c:"#6c7bff",w:1}, travail:{l:"Autre travail",c:"#b08a4a",w:1}};
+const PRIOS={urgent:{l:"Urgent",c:"#d01f1f",o:0},haute:{l:"Haute",c:"#f08a00",o:1},normale:{l:"Normale",c:"#7d8a82",o:2},basse:{l:"Basse",c:"#5b8bd6",o:3}};
+const prOf=o=>PRIOS[o.prio]?o.prio:"normale";
+const asgOf=o=>Array.isArray(o.assign)?o.assign:[];
+const isMine=o=>asgOf(o).some(a=>a.email===me.email);
 const WSTAT={en_cours:{l:"En cours",c:"#3d8bff"},a_reprendre:{l:"À reprendre",c:"#f08a00"},termine:{l:"Terminé",c:"#2fa85f"}};
 const isWork=o=>!!(TYPES[o.type]||{}).w;
 const isDone=o=>o.status==="regle"||o.status==="termine";
@@ -31,7 +35,7 @@ const icoOf=p=>{if(p.ico&&ICONS[p.ico])return p.ico;const n=(p.name||"").normali
 const icoSvg=(k,sz)=>`<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[k].d}"/></svg>`;
 const icoHtml=(k,sz=32)=>`<div class="pico" style="width:${sz}px;height:${sz}px;background:${ICONS[k].c}">${icoSvg(k,Math.round(sz*.62))}</div>`;
 const PALETTE = ["#d6782a","#e58739","#3468eb","#00a1ed","#2fa85f","#a256d6","#e5432b","#7d8a82"];
-const ACT = {message:{c:"#0a7d5a",l:"Message"},signalement:{c:"#e5432b",l:"Signalement"},reparation:{c:"#2fa85f",l:"Réparation"},reouvert:{c:"#f08a00",l:"Rouvert"},ligne:{c:"#3d8bff",l:"Ligne"},carte:{c:"#a256d6",l:"Carte"},suppression:{c:"#7d8a82",l:"Suppression"},travail:{c:"#00b3a4",l:"Travaux"},heures:{c:"#b08a4a",l:"Heures"}};
+const ACT = {assign:{c:"#7a4fd6",l:"Assignation"},message:{c:"#0a7d5a",l:"Message"},signalement:{c:"#e5432b",l:"Signalement"},reparation:{c:"#2fa85f",l:"Réparation"},reouvert:{c:"#f08a00",l:"Rouvert"},ligne:{c:"#3d8bff",l:"Ligne"},carte:{c:"#a256d6",l:"Carte"},suppression:{c:"#7d8a82",l:"Suppression"},travail:{c:"#00b3a4",l:"Travaux"},heures:{c:"#b08a4a",l:"Heures"}};
 const BASES = {
  sat:{l:"Satellite",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",o:{maxNativeZoom:19,maxZoom:21,attribution:"Imagerie © Esri, Maxar, Earthstar Geographics"}},
  hyb:{l:"Satellite + chemins",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",over:"https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",o:{maxNativeZoom:19,maxZoom:21,attribution:"Imagerie © Esri, Maxar · chemins © Esri"}},
@@ -113,7 +117,7 @@ function Fire(db,F){
 
 // ---------- état
 let obs=[], lstate={}, acts=[], membres=[], cfg={}, pending=false;
-let tab="journal", fStat="ouvert", fType="", editMode=false, drawing=null, shapeEdit=null, actsReady=false, pickMode=false;
+let tab="journal", fStat="ouvert", fType="", fAsg="", editMode=false, drawing=null, shapeEdit=null, actsReady=false, pickMode=false;
 let lastSeen=ls.get("erab_seen","");
 const isEd=()=>role==="admin";
 const lst = id=>{const s=lstate[id];return s&&(s.season??seasonOf(s.at))===viewSeason?s:{}};
@@ -162,6 +166,7 @@ function drawOthers(){const oth=allLayer.filter(f=>sectOf(f)!==curSect&&sectors.
 $("#legend").innerHTML=Object.values(LSTAT).map(s=>`<div><i style="background:${s.h};outline:1px solid #0006"></i>Ligne ${s.l.toLowerCase()}</div>`).join("")+`<div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Signalement ouvert</div><div><i style="border:3px solid #e5432b;height:12px;width:12px;border-radius:50%;background:#fff8"></i>Réparé</div><div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;outline:2px dashed #e5432b;outline-offset:1px"></i>Reporté d'une saison passée</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #fff;outline:1px solid #0006"></i>Travaux en cours</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #f08a00"></i>Travaux à reprendre</div><div><i style="background:#fff8;height:11px;width:11px;transform:rotate(45deg);border:2px solid #00b3a4"></i>Travaux terminés</div><div><i style="background:#2f7bf0;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Ma position</div>`;
 function drawObs(){gObs.clearLayers();visObs().forEach(o=>{if(o.lat==null)return;const t=TYPES[o.type]||TYPES.autre,done=isDone(o),old=sOf(o)<viewSeason;
  if(isWork(o)){const rep=o.status==="a_reprendre";L.marker([o.lat,o.lng],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div style="width:16px;height:16px;margin:3px;transform:rotate(45deg);background:${done?"#fff8":t.c};border:3px solid ${rep?"#f08a00":done?t.c:"#fff"};box-shadow:0 1px 4px #0008"></div>`})}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l+" · "+stLabel(o),{direction:"top"}).addTo(gObs);return}
+ const urg=!done&&prOf(o)==="urgent";if(urg)L.circleMarker([o.lat,o.lng],{radius:16,color:"#d01f1f",weight:3,fill:false,interactive:false,className:"pulse"}).addTo(gObs);
  L.circleMarker([o.lat,o.lng],{radius:done?7:10,color:done?t.c:old?t.c:"#fff",weight:done?3:3,fillColor:done?"#ffffff":t.c,fillOpacity:done?.5:1,dashArray:old?"3 3":null}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l,{direction:"top"}).addTo(gObs)})}
 map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);$("#pop").classList.remove("on")});
 $("#bFit").onclick=()=>{follow=false;locBtn();fitAll()};
@@ -272,12 +277,15 @@ function seasonBar(){const ss=[...new Set([CUR,...obs.map(sOf)])].sort((a,b)=>b-
  return `<div class="filters" style="align-items:center"><span class="small" style="margin-right:4px">Saison</span>${ss.map(s=>`<button class="chip" data-season="${s}" aria-pressed="${s===viewSeason}">${s}${s===CUR?" (en cours)":""}</button>`).join("")}</div>
  <p class="small" style="margin:-4px 0 10px">${viewSeason===CUR?`Saison ${CUR} depuis le 1<sup>er</sup> août ${CUR-1}. Les réparations des saisons passées sont archivées; les bris non réparés sont reportés.`:`Archive de la saison ${viewSeason}.`}</p>`}
 function vJournal(){const all=visObs(),open=all.filter(o=>!isDone(o));
- const list=all.filter(o=>(fStat==="tous"||(fStat==="ouvert"?!isDone(o):isDone(o)))&&(!fType||o.type===fType));
+ const list=all.filter(o=>(fStat==="tous"||(fStat==="ouvert"?!isDone(o):isDone(o)))&&(!fType||o.type===fType)&&(!fAsg||(fAsg==="moi"?isMine(o):fAsg==="aucun"?!asgOf(o).length:fAsg==="urgent"?["urgent","haute"].includes(prOf(o)):true)))
+  .sort((a,b)=>(isDone(a)-isDone(b))||(PRIOS[prOf(a)].o-PRIOS[prOf(b)].o)||String(b.at).localeCompare(String(a.at)));
+ const mineN=open.filter(isMine).length;
  const brisL=lines.filter(l=>["bris","rep"].includes(lst(l.id).status)).length;
- return seasonBar()+`<div class="kpis"><div class="kpi"><b>${open.length}</b><span>à faire</span></div><div class="kpi"><b>${all.length-open.length}</b><span>faits</span></div><div class="kpi"><b>${brisL}</b><span>lignes en bris</span></div></div>
+ return seasonBar()+`<div class="kpis"><div class="kpi"><b>${open.length}</b><span>à faire</span></div><div class="kpi"><b>${all.length-open.length}</b><span>faits</span></div><div class="kpi"><b>${brisL}</b><span>lignes en bris</span></div><div class="kpi"><b style="color:#7a4fd6">${mineN}</b><span>assignés à moi</span></div></div>
+ <div class="filters">${[["","Tout le monde"],["moi","Assignés à moi"+(mineN?" ("+mineN+")":"")],["urgent","Urgents / hauts"],["aucun","Non assignés"]].map(([k,l])=>`<button class="chip" data-fa="${k}" aria-pressed="${fAsg===k}">${l}</button>`).join("")}</div>
  <div class="filters">${[["ouvert","À faire"],["regle","Faits"],["tous","Tous"]].map(([k,l])=>`<button class="chip" data-fs="${k}" aria-pressed="${fStat===k}">${l}</button>`).join("")}</div>
  <div class="filters">${[["","Tous types"],...Object.entries(TYPES).map(([k,t])=>[k,t.l])].map(([k,l])=>`<button class="chip" data-ft="${k}" aria-pressed="${fType===k}">${l}</button>`).join("")}</div>
- ${list.length?list.map(o=>{const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line);return `<div class="item" data-obs="${esc(o.id)}">${o.photos&&o.photos[0]?pimg(o.photos[0],"thumb"):`<div class="thumb"></div>`}<div style="flex:1"><span class="badge" style="--c:${t.c}">${t.l}</span>${isWork(o)?` <span class="meta">· ${stLabel(o)}</span>`:o.status==="regle"?` <span class="meta">· réparé</span>`:""}${sOf(o)<viewSeason?` <span class="meta">· reporté de ${sOf(o)}</span>`:""}<p>${esc(o.note)||"<span class=meta>Sans note</span>"}</p><div class="meta">${fmtD(o.at)}${ln?" · "+esc(ln):""}${o.byName?" · "+esc(o.byName):""}</div></div></div>`}).join(""):`<div class="empty">Aucun signalement ${fStat==="ouvert"?"ouvert ":""}pour cette saison.<br>Touchez <b>Signaler</b> pour ajouter un bris, une photo ou un point GPS.</div>`}`}
+ ${list.length?list.map(o=>{const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line);return `<div class="item" data-obs="${esc(o.id)}">${o.photos&&o.photos[0]?pimg(o.photos[0],"thumb"):`<div class="thumb"></div>`}<div style="flex:1"><span class="badge" style="--c:${t.c}">${t.l}</span>${prOf(o)!=="normale"&&!isDone(o)?` <span class="badge" style="--c:${PRIOS[prOf(o)].c}">${PRIOS[prOf(o)].l}</span>`:""}${asgOf(o).length?` <span class="meta">→ ${esc(asgOf(o).map(a=>a.nom).join(", "))}</span>`:""}${isWork(o)?` <span class="meta">· ${stLabel(o)}</span>`:o.status==="regle"?` <span class="meta">· réparé</span>`:""}${sOf(o)<viewSeason?` <span class="meta">· reporté de ${sOf(o)}</span>`:""}<p>${esc(o.note)||"<span class=meta>Sans note</span>"}</p><div class="meta">${fmtD(o.at)}${ln?" · "+esc(ln):""}${o.byName?" · "+esc(o.byName):""}</div></div></div>`}).join(""):`<div class="empty">Aucun signalement ${fStat==="ouvert"?"ouvert ":""}pour cette saison.<br>Touchez <b>Signaler</b> pour ajouter un bris, une photo ou un point GPS.</div>`}`}
 function vAct(){return `<div class="h2">Activité</div>${store&&store.kind==="fire"?`<div class="row" style="margin-bottom:10px"><button class="btn pri" id="bMsg" style="flex:1">📣 Envoyer un message à l'équipe</button></div>`:""}${acts.length?acts.map(a=>{const k=ACT[a.kind]||ACT.carte;return `<div class="item" ${a.obs?`data-obs="${esc(a.obs)}"`:""}><span class="badge" style="--c:${k.c};width:104px;flex:none">${k.l}</span><div style="flex:1"><div>${esc(a.text)}</div><div class="meta">${sectors.length>1?esc(sectName(sectOf(a)))+" · ":""}${ago(a.at)}${a.byName?" · "+esc(a.byName):""}</div></div></div>`}).join(""):`<div class="empty">Rien encore. Les signalements, réparations et changements de la carte apparaîtront ici.</div>`}`}
 function vLignes(){const tot=lines.reduce((a,l)=>a+l.len,0);
  return `<div class="h2">Maîtres-lignes · saison ${viewSeason}</div><table><thead><tr><th>Ligne</th><th class="n">Longueur</th><th>État</th><th class="n">Ouverts</th></tr></thead><tbody>${lines.map(l=>{const st=lst(l.id).status||"ok",n=visObs().filter(o=>o.line===l.id&&!isDone(o)).length;return `<tr class="click" data-line="${l.id}"><td>${esc(l.label)}</td><td class="n">${fmtM(l.len)}</td><td><span class="badge" style="--c:${st==="ok"?"#2fa85f":LSTAT[st].h}">${LSTAT[st].l}</span></td><td class="n">${n||"–"}</td></tr>`}).join("")}</tbody><tfoot><tr><td>Total · ${lines.length} lignes</td><td class="n">${fmtM(tot)}</td><td></td><td></td></tr></tfoot></table><p class="small">L'état des lignes repart à OK à chaque nouvelle saison. Longueurs à plat, sans dénivelé.</p>`}
@@ -325,6 +333,7 @@ function tileList(z0,z1){const b=bounds().pad(.15),out=[];const tx=(lng,z)=>Math
 function bindView(v){
  v.querySelectorAll("[data-season]").forEach(b=>b.onclick=()=>{viewSeason=+b.dataset.season;renderAll()});
  v.querySelectorAll("[data-fs]").forEach(b=>b.onclick=()=>{fStat=b.dataset.fs;render()});
+ v.querySelectorAll("[data-fa]").forEach(b=>b.onclick=()=>{fAsg=b.dataset.fa;render()});
  v.querySelectorAll("[data-ft]").forEach(b=>b.onclick=()=>{fType=b.dataset.ft;render()});
  v.querySelectorAll("[data-obs]").forEach(b=>b.onclick=()=>{const o=obsAll.find(x=>x.id===b.dataset.obs);if(o){if(sectOf(o)!==curSect)switchSect(sectOf(o),true);toMap();follow=false;locBtn();if(o.lat!=null)map.setView([o.lat,o.lng],Math.max(map.getZoom(),18));openObs(o)}});
  v.querySelectorAll("[data-line]").forEach(b=>b.onclick=()=>{const l=lines.find(x=>x.id===b.dataset.line);toMap();follow=false;locBtn();map.fitBounds(lineLayers[l.id].hit.getBounds(),{padding:[60,60],maxZoom:19});openLine(l)});
@@ -362,7 +371,7 @@ function bindView(v){
 
 // ---------- fiches
 const scrim=$("#scrim"),sheet=$("#sheet");
-function openSheet(html){sheet.innerHTML=html;scrim.classList.add("on");sheet.scrollTop=0;const x=sheet.querySelector("[data-close]");if(x)x.onclick=closeSheet;hydrate(sheet)}
+function openSheet(html){sheet.innerHTML=html;scrim.classList.add("on");sheet.scrollTop=0;const x=sheet.querySelector("[data-close]");if(x)x.onclick=closeSheet;hydrate(sheet);if(asgCur){const a=asgCur;asgCur=null;bindAsg(a)}}
 function closeSheet(){scrim.classList.remove("on");sheet.innerHTML=""}
 scrim.addEventListener("click",e=>{if(e.target===scrim)closeSheet()});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&scrim.classList.contains("on"))closeSheet()});
@@ -385,8 +394,24 @@ function openMsg(){let urg=false,tgt=curSect;const a=cfg.alertes;
 const head=t=>`<div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div class="h2" style="margin:0">${t}</div><button class="btn" data-close>Fermer</button></div>`;
 const dist=o=>fix&&o.lat!=null?" · à "+fmtM(hav([fix.lng,fix.lat],[o.lng,o.lat]))+" de vous":"";
 
+let asgCur=null;
+function asgPanel(o){asgCur=o;const pr=prOf(o),as=asgOf(o);
+ if(!isEd())return (pr!=="normale"||as.length)?`<div class="row" style="margin:8px 0;gap:6px">${pr!=="normale"?`<span class="badge" style="--c:${PRIOS[pr].c}">Priorité ${PRIOS[pr].l.toLowerCase()}</span>`:""}${as.length?`<span class="meta">Assigné à ${esc(as.map(a=>a.nom).join(", "))}</span>`:""}</div>`:"";
+ const mem=membres.slice().sort((a,b)=>String(a.nom||a.id).localeCompare(String(b.nom||b.id),"fr"));
+ return `<div class="asg"><label class="f">Priorité <span class="meta">(admin)</span></label><div class="types">${Object.entries(PRIOS).map(([k,v])=>`<button class="chip" data-pr="${k}" aria-pressed="${k===pr}" style="--c:${v.c}">${v.l}</button>`).join("")}</div>
+ <label class="f">Assigner à <span class="meta">(une ou plusieurs personnes)</span></label><div class="types">${mem.map(m=>`<button class="chip" data-as="${esc(m.id)}" data-nm="${esc(m.nom||m.id.split("@")[0])}" aria-pressed="${as.some(a=>a.email===m.id)}">${esc(m.nom||m.id.split("@")[0])}${m.role==="admin"?" ★":""}</button>`).join("")||`<span class="meta">Ajoutez des membres dans Réglages › Équipe.</span>`}</div>
+ <div class="row" style="margin-top:8px"><button class="btn pri" id="asSave">Enregistrer et avertir</button><span class="small" id="asMsg"></span></div></div>`}
+function bindAsg(o){if(!isEd())return;let pr=prOf(o),sel=asgOf(o).map(a=>({...a}));
+ sheet.querySelectorAll("[data-pr]").forEach(b=>b.onclick=()=>{pr=b.dataset.pr;sheet.querySelectorAll("[data-pr]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+ sheet.querySelectorAll("[data-as]").forEach(b=>b.onclick=()=>{const e=b.dataset.as,i=sel.findIndex(a=>a.email===e);if(i>=0)sel.splice(i,1);else sel.push({email:e,nom:b.dataset.nm});b.setAttribute("aria-pressed",i<0)});
+ const sv=sheet.querySelector("#asSave");if(!sv)return;sv.onclick=async()=>{sv.disabled=true;const before=asgOf(o).map(a=>a.email),added=sel.filter(a=>!before.includes(a.email)),prCh=pr!==prOf(o);
+  await store.upd("obs",o.id,{prio:pr,assign:sel,assignBy:me.nom,assignAt:new Date().toISOString()});
+  const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),what=t.l+(ln?" · "+ln:"");
+  if(added.length)logAct("assign",`📌 ${added.map(a=>a.nom).join(", ")} : ${what} (priorité ${PRIOS[pr].l.toLowerCase()})`,{obs:o.id});
+  else if(prCh)logAct("assign",`Priorité ${PRIOS[pr].l.toLowerCase()} : ${what}`,{obs:o.id});
+  o.prio=pr;o.assign=sel;sheet.querySelector("#asMsg").textContent=added.length?"Assigné et averti.":"Enregistré.";sv.disabled=false;renderAll()}}
 function openObs(o){if(isWork(o))return openWork(o);const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine=o.by===me.uid,past=sOf(o)<CUR&&o.status==="regle";
- openSheet(`<div class="row" style="justify-content:space-between"><span class="badge" style="--c:${t.c};font-size:16px">${t.l}</span><button class="btn" data-close>Fermer</button></div>
+ openSheet(`<div class="row" style="justify-content:space-between"><span class="badge" style="--c:${t.c};font-size:16px">${t.l}</span><button class="btn" data-close>Fermer</button></div>${asgPanel(o)}
  <p style="white-space:pre-wrap">${esc(o.note)||'<span class="meta">Sans note</span>'}</p>
  ${(o.photos||[]).map(p=>pimg(p,"big","Photo du signalement")).join("")}
  <div class="meta">Saison ${sOf(o)} · ${fmtD(o.at)}${o.byName?" · "+esc(o.byName):""}${ln?" · "+esc(ln):""}</div>
@@ -424,7 +449,7 @@ function openPoint(p){const [x,y]=p.coords[0],k=icoOf(p);openSheet(head(esc(p.na
 
 function openWork(o){const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine=o.by===me.uid,ws=WSTAT[o.status]||WSTAT.en_cours,past=sOf(o)<CUR&&isDone(o);
  const hist=(o.suivi||[]).slice().reverse();
- openSheet(`<div class="row" style="justify-content:space-between"><span class="badge" style="--c:${t.c};font-size:16px">${t.l}</span><button class="btn" data-close>Fermer</button></div>
+ openSheet(`<div class="row" style="justify-content:space-between"><span class="badge" style="--c:${t.c};font-size:16px">${t.l}</span><button class="btn" data-close>Fermer</button></div>${asgPanel(o)}
  <div class="row" style="margin:10px 0"><span class="badge" style="--c:${ws.c};font-size:15px">${ws.l}</span>${ln?`<span class="meta">${esc(ln)}</span>`:""}</div>
  ${(o.photos||[]).map(p=>pimg(p,"big","Photo")).join("")}
  ${o.lat!=null?`<div class="pos">Point d'arrêt : ${o.lat.toFixed(6)}, ${o.lng.toFixed(6)}${dist(o)} · <a href="${gmaps(o.lat,o.lng)}" target="_blank" rel="noopener">Google Maps</a></div>`:""}
