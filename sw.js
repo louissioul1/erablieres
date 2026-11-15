@@ -1,5 +1,5 @@
 // Service worker : app utilisable hors ligne + tuiles de carte en cache
-const V = "erab-v2";
+const V = "erab-v3";
 const SHELL = ["./", "./index.html", "./app.js", "./config.js", "./base.js", "./manifest.webmanifest", "./icon.svg"];
 const LIBS = /^(https:\/\/unpkg\.com|https:\/\/www\.gstatic\.com\/firebasejs|https:\/\/fonts\.(googleapis|gstatic)\.com)/;
 const TILES = /(arcgisonline\.com|tile\.opentopomap\.org|tile\.openstreetmap\.org)/;
@@ -21,6 +21,6 @@ self.addEventListener("fetch", e => {
     e.respondWith(caches.open("erab-libs").then(async c => { const hit = await c.match(r); if (hit) return hit; const res = await fetch(r); if (res.ok || res.type === "opaque") c.put(r, res.clone()); return res; })); return;
   }
   if (new URL(u).origin === location.origin) {
-    e.respondWith(fetch(r).then(res => { const cp = res.clone(); caches.open(V).then(c => c.put(r, cp)); return res; }).catch(() => caches.match(r, { ignoreSearch: true }).then(h => h || caches.match("./index.html"))));
+    e.respondWith(fetch(r.url, { cache: "no-cache", credentials: "same-origin" }).then(res => { const cp = res.clone(); caches.open(V).then(c => c.put(r, cp)); return res; }).catch(() => caches.match(r, { ignoreSearch: true }).then(h => h || caches.match("./index.html"))));
   }
 });
