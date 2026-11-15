@@ -1,5 +1,5 @@
 // Service worker : app utilisable hors ligne + tuiles de carte en cache
-const V = "erab-v9";
+const V = "erab-v10";
 const SHELL = ["./", "./index.html", "./app.js", "./config.js", "./base.js", "./manifest.webmanifest", "./icon.svg"];
 const LIBS = /^(https:\/\/unpkg\.com|https:\/\/www\.gstatic\.com\/firebasejs|https:\/\/fonts\.(googleapis|gstatic)\.com)/;
 const TILES = /(arcgisonline\.com|tile\.opentopomap\.org|tile\.openstreetmap\.org)/;
