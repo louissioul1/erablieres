@@ -105,6 +105,7 @@ function Fire(db,F){
   sub(c,cb,o){const q=o&&o.order?F.query(F.collection(db,c),F.orderBy(o.order,"desc"),F.limit(o.lim||100)):F.collection(db,c);
    return F.onSnapshot(q,{includeMetadataChanges:true},s=>cb(s.docs.map(x=>({id:x.id,...x.data()})),s.metadata),e=>{console.warn(c,e);if(e.code==="permission-denied")setSync("warn","Accès refusé")})},
   async get(c,id){const s=await F.getDoc(F.doc(db,c,id));return s.exists()?{id,...s.data()}:null},
+  watch(c,id,cb){return F.onSnapshot(F.doc(db,c,id),s=>cb(s.exists()?{id,...s.data()}:null),e=>console.warn("photo",id,e.code))},
   set:(c,id,v)=>soft(F.setDoc(F.doc(db,c,id),v)),
   upd:(c,id,v)=>soft(F.updateDoc(F.doc(db,c,id),v)),
   del:(c,id)=>soft(F.deleteDoc(F.doc(db,c,id))),
@@ -225,11 +226,17 @@ function exifGPS(buf){try{const v=new DataView(buf);if(v.getUint16(0)!==0xFFD8)r
  const g={};const gn=u16(gps);for(let i=0;i<gn;i++){const e=gps+2+i*12,tag=u16(e),off=t+u32(e+8);if(tag===1||tag===3)g[tag]=String.fromCharCode(v.getUint8(e+8));if(tag===2||tag===4){g[tag]=[0,1,2].map(j=>u32(off+j*8)/u32(off+j*8+4))}}
  if(!g[2]||!g[4])return null;const dd=a=>a[0]+a[1]/60+a[2]/3600;let lat=dd(g[2]),lng=dd(g[4]);if(g[1]==="S")lat=-lat;if(g[3]==="W")lng=-lng;return isFinite(lat)&&isFinite(lng)&&(lat||lng)?{lat,lng}:null}
  if((m&0xFF00)!==0xFF00)return null;o+=2+v.getUint16(o+2)}}catch(e){}return null}
-async function shrink(file){const url=URL.createObjectURL(file);try{const img=await new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=url});const M=1280,s=Math.min(1,M/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*s);c.height=Math.round(img.naturalHeight*s);c.getContext("2d").drawImage(img,0,0,c.width,c.height);return c.toDataURL("image/jpeg",.72)}finally{URL.revokeObjectURL(url)}}
+async function shrink(file){const url=URL.createObjectURL(file);try{const img=await new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=url});let M=1280,q=.72,out="";for(let k=0;k<6;k++){const s=Math.min(1,M/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*s);c.height=Math.round(img.naturalHeight*s);c.getContext("2d").drawImage(img,0,0,c.width,c.height);out=c.toDataURL("image/jpeg",q);if(out.length<650000)break;if(q>.5)q-=.1;else M=Math.round(M*.8)}return out}finally{URL.revokeObjectURL(url)}}
 const photoCache={};
-async function getPhoto(id){if(photoCache[id])return photoCache[id];try{const d=await store.get("photos",id);if(d){photoCache[id]=d.d;return d.d}}catch(e){}return ""}
+const photoWait={};
+// Écoute le document photo jusqu'à ce qu'il existe : marche hors ligne (cache), reprend au retour du réseau,
+// et attend une photo encore en cours d'envoi depuis le téléphone d'un collègue.
+function getPhoto(id){if(photoCache[id])return Promise.resolve(photoCache[id]);if(photoWait[id])return photoWait[id];
+ return photoWait[id]=new Promise(res=>{let un=null,done=false;const ok=d=>{if(done)return;done=true;photoCache[id]=d;try{un&&un()}catch(e){}delete photoWait[id];res(d)};
+  const once=()=>store.get("photos",id).then(x=>x&&x.d&&ok(x.d)).catch(()=>{});
+  if(store.watch){try{un=store.watch("photos",id,x=>{if(x&&x.d)ok(x.d)})}catch(e){once()}}else{once();const t=setInterval(()=>{if(done)return clearInterval(t);once()},15000)}})}
 const pimg=(id,cls,alt)=>`<img class="${cls}" data-pid="${esc(id)}" alt="${esc(alt||"")}">`;
-function hydrate(root){root.querySelectorAll("img[data-pid]").forEach(async im=>{if(im.src)return;const s=await getPhoto(im.dataset.pid);if(s)im.src=s})}
+function hydrate(root){root.querySelectorAll("img[data-pid]").forEach(async im=>{if(im.src)return;if(!photoCache[im.dataset.pid])im.classList.add("ploading");const s=await getPhoto(im.dataset.pid);if(s){im.src=s;im.classList.remove("ploading")}})}
 async function savePhotos(list,obsId){const ids=[];for(const d of list){const id=nid("p");photoCache[id]=d;await store.set("photos",id,{d,obs:obsId,at:new Date().toISOString()});ids.push(id)}return ids}
 
 // ---------- synchro, activité, alertes
