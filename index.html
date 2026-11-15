@@ -114,6 +114,9 @@ textarea{min-height:84px;resize:vertical}
 .photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .photos img{width:84px;height:84px;object-fit:cover;border-radius:8px}
 .big{width:100%;border-radius:10px;margin:6px 0;display:block;background:var(--chip);min-height:120px}
+.asg{border:1px solid var(--line);border-radius:12px;padding:4px 12px 12px;margin:10px 0;background:color-mix(in srgb,#7a4fd6 5%,transparent)}
+.chip[data-pr][aria-pressed=true]{background:var(--c);border-color:var(--c);color:#fff}
+.pulse{animation:pu 1.6s infinite}@keyframes pu{50%{stroke-opacity:.2}}
 img.ploading{background:linear-gradient(90deg,var(--chip) 25%,color-mix(in srgb,var(--chip) 60%,#fff) 50%,var(--chip) 75%);background-size:200% 100%;animation:pl 1.4s infinite linear}@keyframes pl{to{background-position:-200% 0}}
 .err{color:var(--maple);font-weight:600;font-size:14px;margin-top:8px}
 .ok{color:var(--forest);font-weight:600;font-size:14px;margin-top:8px}
