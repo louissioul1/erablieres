@@ -31,7 +31,7 @@ const icoOf=p=>{if(p.ico&&ICONS[p.ico])return p.ico;const n=(p.name||"").normali
 const icoSvg=(k,sz)=>`<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[k].d}"/></svg>`;
 const icoHtml=(k,sz=32)=>`<div class="pico" style="width:${sz}px;height:${sz}px;background:${ICONS[k].c}">${icoSvg(k,Math.round(sz*.62))}</div>`;
 const PALETTE = ["#d6782a","#e58739","#3468eb","#00a1ed","#2fa85f","#a256d6","#e5432b","#7d8a82"];
-const ACT = {signalement:{c:"#e5432b",l:"Signalement"},reparation:{c:"#2fa85f",l:"Réparation"},reouvert:{c:"#f08a00",l:"Rouvert"},ligne:{c:"#3d8bff",l:"Ligne"},carte:{c:"#a256d6",l:"Carte"},suppression:{c:"#7d8a82",l:"Suppression"},travail:{c:"#00b3a4",l:"Travaux"},heures:{c:"#b08a4a",l:"Heures"}};
+const ACT = {message:{c:"#0a7d5a",l:"Message"},signalement:{c:"#e5432b",l:"Signalement"},reparation:{c:"#2fa85f",l:"Réparation"},reouvert:{c:"#f08a00",l:"Rouvert"},ligne:{c:"#3d8bff",l:"Ligne"},carte:{c:"#a256d6",l:"Carte"},suppression:{c:"#7d8a82",l:"Suppression"},travail:{c:"#00b3a4",l:"Travaux"},heures:{c:"#b08a4a",l:"Heures"}};
 const BASES = {
  sat:{l:"Satellite",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",o:{maxNativeZoom:19,maxZoom:21,attribution:"Imagerie © Esri, Maxar, Earthstar Geographics"}},
  hyb:{l:"Satellite + chemins",url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",over:"https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",o:{maxNativeZoom:19,maxZoom:21,attribution:"Imagerie © Esri, Maxar · chemins © Esri"}},
@@ -241,7 +241,7 @@ async function logAct(kind,text,extra){try{await store.set("activite",nid("a"),{
 function notify(text){const a=cfg.alertes;if(!a||!a.topic||store.kind==="local")return;if(a.skipUid&&a.skipUid===me.uid)return;const q=ls.get("erab_ntfyq",[]);q.push((sectors.length>1?"["+sectName(curSect)+"] ":"")+me.nom+" : "+text);ls.set("erab_ntfyq",q.slice(-50));flushNtfy()}
 let flushing=false;
 async function flushNtfy(){const a=cfg.alertes;if(flushing||!a||!a.topic)return;flushing=true;let q=ls.get("erab_ntfyq",[]);
- while(q.length){try{const r=await fetch("https://ntfy.sh/"+encodeURIComponent(a.topic),{method:"POST",body:q[0],headers:{Title:"Erablieres",Tags:"maple_leaf"}});if(!r.ok)break;q.shift();ls.set("erab_ntfyq",q)}catch(e){break}}flushing=false}
+ while(q.length){try{const it=typeof q[0]==="string"?{b:q[0]}:q[0];const r=await fetch("https://ntfy.sh/"+encodeURIComponent(a.topic),{method:"POST",body:it.b,headers:{Title:it.t||"Erablieres",Tags:it.u?"rotating_light":"maple_leaf",Priority:it.u?"5":"3"}});if(!r.ok)break;q.shift();ls.set("erab_ntfyq",q)}catch(e){break}}flushing=false}
 function bell(){const n=acts.filter(a=>a.by!==me.uid&&a.at>lastSeen).length;const b=$("#bellN");b.textContent=n>9?"9+":n;b.style.display=n?"grid":"none"}
 const lineLabel=id=>(lines.find(l=>l.id===id)||{}).label||"";
 const actText=o=>(TYPES[o.type]||TYPES.autre).l+(isWork(o)?" · "+stLabel(o).toLowerCase():" signalé")+(o.line?" · "+lineLabel(o.line):"")+(o.note?" — « "+o.note.slice(0,80)+" »":"");
@@ -271,7 +271,7 @@ function vJournal(){const all=visObs(),open=all.filter(o=>!isDone(o));
  <div class="filters">${[["ouvert","À faire"],["regle","Faits"],["tous","Tous"]].map(([k,l])=>`<button class="chip" data-fs="${k}" aria-pressed="${fStat===k}">${l}</button>`).join("")}</div>
  <div class="filters">${[["","Tous types"],...Object.entries(TYPES).map(([k,t])=>[k,t.l])].map(([k,l])=>`<button class="chip" data-ft="${k}" aria-pressed="${fType===k}">${l}</button>`).join("")}</div>
  ${list.length?list.map(o=>{const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line);return `<div class="item" data-obs="${esc(o.id)}">${o.photos&&o.photos[0]?pimg(o.photos[0],"thumb"):`<div class="thumb"></div>`}<div style="flex:1"><span class="badge" style="--c:${t.c}">${t.l}</span>${isWork(o)?` <span class="meta">· ${stLabel(o)}</span>`:o.status==="regle"?` <span class="meta">· réparé</span>`:""}${sOf(o)<viewSeason?` <span class="meta">· reporté de ${sOf(o)}</span>`:""}<p>${esc(o.note)||"<span class=meta>Sans note</span>"}</p><div class="meta">${fmtD(o.at)}${ln?" · "+esc(ln):""}${o.byName?" · "+esc(o.byName):""}</div></div></div>`}).join(""):`<div class="empty">Aucun signalement ${fStat==="ouvert"?"ouvert ":""}pour cette saison.<br>Touchez <b>Signaler</b> pour ajouter un bris, une photo ou un point GPS.</div>`}`}
-function vAct(){return `<div class="h2">Activité</div>${acts.length?acts.map(a=>{const k=ACT[a.kind]||ACT.carte;return `<div class="item" ${a.obs?`data-obs="${esc(a.obs)}"`:""}><span class="badge" style="--c:${k.c};width:104px;flex:none">${k.l}</span><div style="flex:1"><div>${esc(a.text)}</div><div class="meta">${sectors.length>1?esc(sectName(sectOf(a)))+" · ":""}${ago(a.at)}${a.byName?" · "+esc(a.byName):""}</div></div></div>`}).join(""):`<div class="empty">Rien encore. Les signalements, réparations et changements de la carte apparaîtront ici.</div>`}`}
+function vAct(){return `<div class="h2">Activité</div>${store&&store.kind==="fire"?`<div class="row" style="margin-bottom:10px"><button class="btn pri" id="bMsg" style="flex:1">📣 Envoyer un message à l'équipe</button></div>`:""}${acts.length?acts.map(a=>{const k=ACT[a.kind]||ACT.carte;return `<div class="item" ${a.obs?`data-obs="${esc(a.obs)}"`:""}><span class="badge" style="--c:${k.c};width:104px;flex:none">${k.l}</span><div style="flex:1"><div>${esc(a.text)}</div><div class="meta">${sectors.length>1?esc(sectName(sectOf(a)))+" · ":""}${ago(a.at)}${a.byName?" · "+esc(a.byName):""}</div></div></div>`}).join(""):`<div class="empty">Rien encore. Les signalements, réparations et changements de la carte apparaîtront ici.</div>`}`}
 function vLignes(){const tot=lines.reduce((a,l)=>a+l.len,0);
  return `<div class="h2">Maîtres-lignes · saison ${viewSeason}</div><table><thead><tr><th>Ligne</th><th class="n">Longueur</th><th>État</th><th class="n">Ouverts</th></tr></thead><tbody>${lines.map(l=>{const st=lst(l.id).status||"ok",n=visObs().filter(o=>o.line===l.id&&!isDone(o)).length;return `<tr class="click" data-line="${l.id}"><td>${esc(l.label)}</td><td class="n">${fmtM(l.len)}</td><td><span class="badge" style="--c:${st==="ok"?"#2fa85f":LSTAT[st].h}">${LSTAT[st].l}</span></td><td class="n">${n||"–"}</td></tr>`}).join("")}</tbody><tfoot><tr><td>Total · ${lines.length} lignes</td><td class="n">${fmtM(tot)}</td><td></td><td></td></tr></tfoot></table><p class="small">L'état des lignes repart à OK à chaque nouvelle saison. Longueurs à plat, sans dénivelé.</p>`}
 function vZones(){const ha=zones.reduce((a,z)=>a+(+z.ha||0),0),pot=zones.reduce((a,z)=>a+(+z.pot||0),0);
@@ -324,7 +324,7 @@ function bindView(v){
  v.querySelectorAll("[data-zone]").forEach(b=>b.onclick=()=>{const z=zones.find(x=>x.id===b.dataset.zone);toMap();map.fitBounds(L.latLngBounds(ll(z.coords)),{padding:[30,30]})});
  v.querySelectorAll("[data-feat]").forEach(b=>b.onclick=()=>{const f=[...lines,...zones,...pts,...stations].find(x=>x.id===b.dataset.feat);if(!f)return;toMap();map.fitBounds(L.latLngBounds(ll(f.coords)),{padding:[60,60],maxZoom:19});if(isEd()){setEdit(true);openFeat(f)}});
  const on=(id,fn)=>{const e=v.querySelector(id);if(e)e.onclick=fn};
- on("#hAdd",()=>{toMap();openHeure()});on("#hCsv",hCsv);
+ on("#hAdd",()=>{toMap();openHeure()});on("#bMsg",()=>{toMap();openMsg()});on("#hCsv",hCsv);
  v.querySelectorAll("[data-hs]").forEach(b=>b.onclick=()=>{hScope=b.dataset.hs;render()});
  v.querySelectorAll("[data-hid]").forEach(b=>b.onclick=()=>{const x=heures.find(y=>y.id===b.dataset.hid);if(x){toMap();openHeure(x)}});
  on("#bEdit",()=>{setEdit(!editMode);toMap()});
@@ -360,6 +360,21 @@ function closeSheet(){scrim.classList.remove("on");sheet.innerHTML=""}
 scrim.addEventListener("click",e=>{if(e.target===scrim)closeSheet()});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&scrim.classList.contains("on"))closeSheet()});
 const gmaps=(lat,lng)=>`https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
+function openMsg(){let urg=false,tgt=curSect;const a=cfg.alertes;
+ openSheet(head("Message à l'équipe")+`<p class="small" style="margin-top:0">Envoyé en notification à tous ceux qui sont abonnés aux alertes (app ntfy), et affiché dans l'Activité.</p>
+ <label class="f" for="mTxt">Message</label><textarea id="mTxt" placeholder="Ex. Bris sur la ligne 7, quelqu'un peut aller voir ?"></textarea>
+ <label class="f">Rapides</label><div class="types">${["On arrête pour aujourd'hui","Retour à la cabane","Besoin d'aide","Pompe arrêtée","Orage : sortez du bois"].map(t=>`<button class="chip" data-mq="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+ <label class="f">Secteur concerné</label><div class="types">${[...sectors.map(x=>[x.id,x.nom]),["*","Tous"]].map(([k,l])=>`<button class="chip" data-mt="${esc(k)}" aria-pressed="${k===tgt}">${esc(l)}</button>`).join("")}</div>
+ <label class="f">Importance</label><div class="types"><button class="chip" data-mu="0" aria-pressed="true">Normal</button><button class="chip" data-mu="1" aria-pressed="false">🚨 Urgent (sonnerie forte)</button></div>
+ <div class="row" style="margin-top:16px"><button class="btn pri" id="mSend" style="flex:1">Envoyer</button></div><div class="small" id="mRes">${a&&a.topic?"":"Les alertes ne sont pas configurées (Réglages › Alertes) : le message sera seulement dans l'Activité."}</div>`);
+ sheet.querySelectorAll("[data-mq]").forEach(b=>b.onclick=()=>{$("#mTxt").value=b.dataset.mq});
+ sheet.querySelectorAll("[data-mt]").forEach(b=>b.onclick=()=>{tgt=b.dataset.mt;sheet.querySelectorAll("[data-mt]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+ sheet.querySelectorAll("[data-mu]").forEach(b=>b.onclick=()=>{urg=b.dataset.mu==="1";sheet.querySelectorAll("[data-mu]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+ $("#mSend").onclick=async()=>{const t=$("#mTxt").value.trim();if(!t){$("#mRes").textContent="Écrivez un message.";return}$("#mSend").disabled=true;
+  const sn=tgt==="*"?"Toutes les érablières":sectName(tgt),ascii=x=>x.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\x20-\x7e]/g,"");
+  try{await store.set("activite",nid("a"),{kind:"message",text:(urg?"URGENT — ":"")+t,sect:tgt==="*"?curSect:tgt,by:me.uid,byName:me.nom,at:new Date().toISOString(),season:CUR,urgent:urg})}catch(e){}
+  if(a&&a.topic){const q=ls.get("erab_ntfyq",[]);q.push({b:me.nom+" : "+t,t:(urg?"URGENT - ":"")+ascii(sn),u:urg?1:0});ls.set("erab_ntfyq",q.slice(-50));await flushNtfy()}
+  const left=ls.get("erab_ntfyq",[]).length;$("#mRes").textContent=!(a&&a.topic)?"Ajouté à l'Activité.":left?"Pas de réseau : le message partira au retour du signal.":"Message envoyé.";setTimeout(closeSheet,1200)}}
 const head=t=>`<div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div class="h2" style="margin:0">${t}</div><button class="btn" data-close>Fermer</button></div>`;
 const dist=o=>fix&&o.lat!=null?" · à "+fmtM(hav([fix.lng,fix.lat],[o.lng,o.lat]))+" de vous":"";
 
