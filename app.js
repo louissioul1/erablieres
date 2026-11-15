@@ -12,6 +12,24 @@ const isWork=o=>!!(TYPES[o.type]||{}).w;
 const isDone=o=>o.status==="regle"||o.status==="termine";
 const stLabel=o=>isWork(o)?(WSTAT[o.status]||WSTAT.en_cours).l:(o.status==="regle"?"réparé":"ouvert");
 const LSTAT = {ok:{l:"OK",h:"#ffffff"},verif:{l:"À vérifier",h:"#ffc21a"},bris:{l:"Bris",h:"#ff3b22"},rep:{l:"En réparation",h:"#3d8bff"}};
+const ICONS = {
+ station:{l:"Station de pompage",c:"#1f6fd6",d:"M3 11l9-7 9 7v9H3z M12 9.5c2 2.8 3 4 3 5.5a3 3 0 0 1-6 0c0-1.5 1-2.7 3-5.5z"},
+ relais:{l:"Relais",c:"#7a4fd6",d:"M5 20v-8l7-5 7 5v8z M12 7V2.5 M9 3.5h6"},
+ cabane:{l:"Cabane à sucre",c:"#a0662a",d:"M3 20V11l9-7 9 7v9z M16 7V3h2v5.5 M9.5 20v-5.5h5V20"},
+ reservoir:{l:"Réservoir",c:"#0098b8",d:"M5 6c0-1.7 3-3 7-3s7 1.3 7 3v12c0 1.7-3 3-7 3s-7-1.3-7-3z M5 6c0 1.7 3 3 7 3s7-1.3 7-3"},
+ extracteur:{l:"Extracteur / pompe vacuum",c:"#d6455a",d:"M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M12 12l4-4 M12 12h.01"},
+ vanne:{l:"Valve / vanne",c:"#e08a00",d:"M3 8v8l9-4z M21 8v8l-9-4z M12 12V5 M9 5h6"},
+ monteeau:{l:"Monte-eau",c:"#00a37a",d:"M12 21V4 M6 10l6-6 6 6 M8 21h8"},
+ ponceau:{l:"Ponceau / traverse",c:"#4b7a99",d:"M3 18h18 M6 18a6 6 0 0 1 12 0"},
+ barriere:{l:"Barrière / accès",c:"#c2410c",d:"M3 9h18v5H3z M5 14v7 M19 14v7 M8 9l3 5 M13 9l3 5"},
+ elec:{l:"Électricité / solaire",c:"#d4a400",d:"M13 2L4 14h7l-1 8 9-12h-7z"},
+ capteur:{l:"Capteur / sonde",c:"#2f8f9d",d:"M4.5 11a11 11 0 0 1 15 0 M7.5 14.5a6.5 6.5 0 0 1 9 0 M12 18.5h.01"},
+ danger:{l:"Danger / attention",c:"#e5432b",d:"M12 3l10 18H2z M12 10v5 M12 18h.01"},
+ repere:{l:"Repère",c:"#2fa85f",d:"M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z M12 10h.01"}};
+const icoOf=p=>{if(p.ico&&ICONS[p.ico])return p.ico;const n=(p.name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+ return /pomp|station/.test(n)?"station":/relais/.test(n)?"relais":/cabane/.test(n)?"cabane":/reservoir|bassin/.test(n)?"reservoir":/extract|vacuum/.test(n)?"extracteur":/valve|vanne/.test(n)?"vanne":/monte/.test(n)?"monteeau":/ponceau|traverse/.test(n)?"ponceau":/barri|acces/.test(n)?"barriere":/solaire|elec/.test(n)?"elec":/capteur|sonde/.test(n)?"capteur":/danger/.test(n)?"danger":"repere"};
+const icoSvg=(k,sz)=>`<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[k].d}"/></svg>`;
+const icoHtml=(k,sz=32)=>`<div class="pico" style="width:${sz}px;height:${sz}px;background:${ICONS[k].c}">${icoSvg(k,Math.round(sz*.62))}</div>`;
 const PALETTE = ["#d6782a","#e58739","#3468eb","#00a1ed","#2fa85f","#a256d6","#e5432b","#7d8a82"];
 const ACT = {signalement:{c:"#e5432b",l:"Signalement"},reparation:{c:"#2fa85f",l:"Réparation"},reouvert:{c:"#f08a00",l:"Rouvert"},ligne:{c:"#3d8bff",l:"Ligne"},carte:{c:"#a256d6",l:"Carte"},suppression:{c:"#7d8a82",l:"Suppression"},travail:{c:"#00b3a4",l:"Travaux"},heures:{c:"#b08a4a",l:"Heures"}};
 const BASES = {
@@ -131,7 +149,7 @@ function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers()
   const vis=L.polyline(c,{color:st==="ok"&&lightBase()?"#1f4a33":LSTAT[st].h,weight:st==="ok"?3:5,opacity:1,dashArray:st==="verif"?"8 6":null,interactive:false}).addTo(gLines);
   const hit=L.polyline(c,{color:"#000",opacity:0,weight:22}).bindTooltip(l.label+" · "+fmtM(l.len),{sticky:true}).on("click",e=>featClick(l,e,()=>openLine(l))).addTo(gLines);
   lineLayers[l.id]={vis,hit}});
- pts.forEach(p=>{const [x,y]=p.coords[0];L.circleMarker([y,x],{radius:7,color:"#fff",weight:2,fillColor:p.color&&p.color!=="#555555"?p.color:"#1f4a33",fillOpacity:1}).bindTooltip(p.name,{permanent:true,direction:"right",className:"lbl",offset:[6,0]}).on("click",e=>featClick(p,e,()=>openPoint(p))).addTo(gPts)});
+ pts.forEach(p=>{const [x,y]=p.coords[0],k=icoOf(p);L.marker([y,x],{icon:L.divIcon({className:"",html:icoHtml(k,30),iconSize:[30,30],iconAnchor:[15,15]})}).bindTooltip(p.name,{permanent:true,direction:"right",className:"lbl",offset:[14,0]}).on("click",e=>featClick(p,e,()=>openPoint(p))).addTo(gPts)});
  drawOthers()}
 function drawOthers(){const oth=allLayer.filter(f=>sectOf(f)!==curSect&&sectors.some(x=>x.id===sectOf(f)));const named={};
  oth.forEach(f=>{const c=ll(dec(f.c)),sid=sectOf(f),go=e=>{L.DomEvent.stop(e);if(drawing||pickMode||shapeEdit||editMode)return;switchSect(sid)};
@@ -380,7 +398,7 @@ function openLine(l){const s=lst(l.id),st=s.status||"ok",n=visObs().filter(o=>o.
  const al=$("#bAddL");if(al)al.onclick=()=>{const usable=fix&&Date.now()-fix.t<60000&&nearestLine(fix.lat,fix.lng).line?.id===l.id;const c=l.coords[Math.floor(l.coords.length/2)];openAdd(usable?{lat:fix.lat,lng:fix.lng,src:"GPS ±"+Math.round(fix.acc)+" m"}:{lat:c[1],lng:c[0],src:"milieu de la ligne"},l.id)};
 }
 function openZone(z){const b=L.latLngBounds(ll(z.coords));openSheet(head(esc(z.name))+`<p>${z.ha} ha · potentiel ${(+z.pot||0).toLocaleString("fr-CA")} entailles${z.ha&&z.pot?" ("+Math.round(z.pot/z.ha)+"/ha)":""}</p>${z.desc?`<p class="small">${esc(z.desc)}</p>`:""}<p class="meta">${visObs().filter(o=>o.lat!=null&&b.contains([o.lat,o.lng])).length} signalement(s) dans le secteur cette saison</p>`)}
-function openPoint(p){const [x,y]=p.coords[0];openSheet(head(esc(p.name))+`${p.desc?`<p>${esc(p.desc)}</p>`:""}<div class="pos">${y.toFixed(6)}, ${x.toFixed(6)}${dist({lat:y,lng:x})} · <a href="${gmaps(y,x)}" target="_blank" rel="noopener">Google Maps</a></div>`)}
+function openPoint(p){const [x,y]=p.coords[0],k=icoOf(p);openSheet(head(esc(p.name))+`<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">${icoHtml(k,34)}<b>${ICONS[k].l}</b></div>${p.desc?`<p>${esc(p.desc)}</p>`:""}<div class="pos">${y.toFixed(6)}, ${x.toFixed(6)}${dist({lat:y,lng:x})} · <a href="${gmaps(y,x)}" target="_blank" rel="noopener">Google Maps</a></div>`)}
 
 function openWork(o){const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line),mine=o.by===me.uid,ws=WSTAT[o.status]||WSTAT.en_cours,past=sOf(o)<CUR&&isDone(o);
  const hist=(o.suivi||[]).slice().reverse();
@@ -461,16 +479,21 @@ function finishDraw(){const d=drawing;if(!d)return;const min=d.kind==="ligne"?2:
  const f={id:null,kind:d.kind,name:"",desc:"",color:d.kind==="zone"?PALETTE[2]:d.kind==="point"?"#2fa85f":"#33463a",c:enc(d.pts),ha:d.kind==="zone"?+areaHa(d.pts).toFixed(1):0,pot:0};
  stopDraw();openFeat(f)}
 function stopDraw(){drawing=null;gTmp.clearLayers();map.getContainer().style.cursor="";banner("");hideDbar()}
-function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Point",station:"Bâtiment"}[f.kind];const c=dec(f.c);
+function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Installation",station:"Bâtiment"}[f.kind];let ico=f.kind==="point"?(f.id?icoOf(f):(f.ico||"")):"";const c=dec(f.c);
  openSheet(head((f.id?"Modifier · ":"Nouveau · ")+kindL)+`
- <label class="f" for="fName">Nom</label><input type="text" id="fName" value="${esc(f.name)}" placeholder="${f.kind==="ligne"?"Ex. 13":"Ex. Zone 4"}">
+ <label class="f" for="fName">Nom</label><input type="text" id="fName" value="${esc(f.name)}" placeholder="${f.kind==="ligne"?"Ex. 13":f.kind==="point"?"Ex. Station Nord":"Ex. Zone 4"}">
+ ${f.kind==="point"?`<label class="f">Type d'installation</label><div class="icogrid">${Object.entries(ICONS).map(([k,v])=>`<button class="icob" data-ico="${k}" aria-pressed="${k===ico}">${icoHtml(k,30)}<span>${v.l}</span></button>`).join("")}</div>
+ <label class="f">Position</label><div class="row" style="align-items:center"><span class="small" id="fPos">${c[0][1].toFixed(6)}, ${c[0][0].toFixed(6)}</span><button class="btn" id="fGps">📍 Ma position GPS</button></div>`:""}
  ${f.kind==="zone"?`<div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label class="f" for="fHa">Superficie (ha)</label><input type="number" step="0.1" id="fHa" value="${f.ha||""}"></div><div style="flex:1"><label class="f" for="fPot">Potentiel (entailles)</label><input type="number" id="fPot" value="${f.pot||""}"></div></div><div class="small">Superficie calculée du tracé : ${areaHa(c).toFixed(1)} ha</div>`:""}
- ${f.kind!=="ligne"?`<label class="f">Couleur</label><div class="types">${PALETTE.map(p=>`<button class="chip" data-col="${p}" aria-pressed="${p===f.color}" style="width:46px;background:${p};border:3px solid ${p===f.color?"var(--ink)":p}" aria-label="Couleur ${p}"></button>`).join("")}</div>`:`<div class="small" style="margin-top:8px">${fmtM(c.reduce((a,p,i)=>i?a+hav(c[i-1],p):0,0))} · ${c.length} points</div>`}
+ ${f.kind==="zone"||f.kind==="station"?`<label class="f">Couleur</label><div class="types">${PALETTE.map(p=>`<button class="chip" data-col="${p}" aria-pressed="${p===f.color}" style="width:46px;background:${p};border:3px solid ${p===f.color?"var(--ink)":p}" aria-label="Couleur ${p}"></button>`).join("")}</div>`:f.kind!=="ligne"?"":`<div class="small" style="margin-top:8px">${fmtM(c.reduce((a,p,i)=>i?a+hav(c[i-1],p):0,0))} · ${c.length} points</div>`}
  <label class="f" for="fDesc">Description</label><textarea id="fDesc">${esc(f.desc||"")}</textarea>
  <div class="row" style="margin-top:16px"><button class="btn pri" id="fSave" style="flex:1">Enregistrer</button>${f.id?`<button class="btn" id="fShape">Modifier le tracé</button><button class="btn red" id="fDel">Supprimer</button>`:""}</div><div id="fConf"></div><div class="err" id="fErr"></div>`);
- let col=f.color;sheet.querySelectorAll("[data-col]").forEach(b=>b.onclick=()=>{col=b.dataset.col;sheet.querySelectorAll("[data-col]").forEach(x=>{x.setAttribute("aria-pressed",x===b);x.style.borderColor=x===b?"var(--ink)":x.dataset.col})});
+ let col=f.color;
+ sheet.querySelectorAll("[data-ico]").forEach(b=>b.onclick=()=>{const prev=ico;ico=b.dataset.ico;col=ICONS[ico].c;const nm=$("#fName");if(!nm.value.trim()||(prev&&nm.value.trim()===ICONS[prev].l))nm.value=ICONS[ico].l;sheet.querySelectorAll("[data-ico]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+ const fg=$("#fGps");if(fg)fg.onclick=async()=>{fg.disabled=true;$("#fPos").textContent="Recherche du GPS…";try{const p=await waitFix();f.c=enc([[p.lng,p.lat]]);$("#fPos").textContent=p.lat.toFixed(6)+", "+p.lng.toFixed(6)+" (± "+Math.round(p.acc)+" m)"}catch(e){$("#fPos").textContent="GPS non disponible."}fg.disabled=false};
+ sheet.querySelectorAll("[data-col]").forEach(b=>b.onclick=()=>{col=b.dataset.col;sheet.querySelectorAll("[data-col]").forEach(x=>{x.setAttribute("aria-pressed",x===b);x.style.borderColor=x===b?"var(--ink)":x.dataset.col})});
  $("#fSave").onclick=async()=>{const b=$("#fSave");b.disabled=true;
-  try{await seedBase();const v={sect:f.sect||curSect,kind:f.kind,name:$("#fName").value.trim()||(f.kind==="ligne"?"Sans nom":kindL),desc:$("#fDesc").value.trim(),color:col,c:f.c,ha:f.kind==="zone"?+($("#fHa").value||areaHa(c).toFixed(1)):0,pot:f.kind==="zone"?+($("#fPot").value||0):0,ord:f.ord??Date.now()};
+  try{await seedBase();const v={sect:f.sect||curSect,kind:f.kind,name:$("#fName").value.trim()||(f.kind==="ligne"?"Sans nom":kindL),desc:$("#fDesc").value.trim(),color:col,c:f.c,ha:f.kind==="zone"?+($("#fHa").value||areaHa(c).toFixed(1)):0,pot:f.kind==="zone"?+($("#fPot").value||0):0,ord:f.ord??Date.now(),...(f.kind==="point"?{ico:ico||"repere"}:{})};if(f.kind==="point")v.color=ICONS[v.ico].c;
    await store.set("couche",f.id||nid("n"),v);logAct("carte",(f.id?"Modifié : ":"Ajouté : ")+kindL.toLowerCase()+" « "+v.name+" »");closeSheet()}catch(e){b.disabled=false;$("#fErr").textContent="Enregistrement impossible."}};
  const sh=$("#fShape");if(sh)sh.onclick=()=>{closeSheet();editShape(f)};
  const del=$("#fDel");if(del)del.onclick=()=>{$("#fConf").innerHTML=`<div class="row" style="margin-top:10px"><span>Supprimer « ${esc(f.name)} » de la carte ?</span><button class="btn red" id="fDel2">Oui, supprimer</button></div>`;
