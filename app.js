@@ -170,6 +170,7 @@ function drawObs(){gObs.clearLayers();visObs().forEach(o=>{if(o.lat==null)return
  L.circleMarker([o.lat,o.lng],{radius:done?7:10,color:done?t.c:old?t.c:"#fff",weight:done?3:3,fillColor:done?"#ffffff":t.c,fillOpacity:done?.5:1,dashArray:old?"3 3":null}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l,{direction:"top"}).addTo(gObs)})}
 map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);$("#pop").classList.remove("on")});
 $("#bFit").onclick=()=>{follow=false;locBtn();fitAll()};
+$("#bDash").onclick=()=>dashOpen();
 let bannerT=0;const banner=(t,ms)=>{const b=$("#banner");clearTimeout(bannerT);b.textContent=t||"";b.classList.toggle("on",!!t);if(t&&ms)bannerT=setTimeout(()=>banner(""),ms)};
 const drw=$("#drawer"),dsc=$("#dscrim");
 const menu=o=>{drw.classList.toggle("open",o);dsc.classList.toggle("on",o)};
@@ -259,15 +260,15 @@ const lineLabel=id=>(lines.find(l=>l.id===id)||{}).label||"";
 const actText=o=>(TYPES[o.type]||TYPES.autre).l+(isWork(o)?" · "+stLabel(o).toLowerCase():" signalé")+(o.line?" · "+lineLabel(o.line):"")+(o.note?" — « "+o.note.slice(0,80)+" »":"");
 async function seedBase(){if(layerIsDb)return;for(const f of baseLayer){const {id,...d}=f;await store.set("couche",id,d)}layerIsDb=true}
 function startData(){
- store.sub("obs",(list,m)=>{obsAll=list.sort((a,b)=>String(b.at).localeCompare(String(a.at)));obs=obsAll.filter(o=>sectOf(o)===curSect);pending=!!m.hasPendingWrites;syncState();drawObs();render()});
- store.sub("lignes",list=>{lstate={};list.forEach(d=>lstate[d.id]=d);drawBase();render()});
- store.sub("couche",(list,m)=>{if(!list.length){if(m.fromCache)return;allLayer=baseLayer;layerIsDb=false;if(isEd())seedBase()}else{allLayer=list;layerIsDb=true}derive();drawBase();drawObs();render()});
+ store.sub("obs",(list,m)=>{obsAll=list.sort((a,b)=>String(b.at).localeCompare(String(a.at)));obs=obsAll.filter(o=>sectOf(o)===curSect);pending=!!m.hasPendingWrites;syncState();drawObs();render();dRefresh()});
+ store.sub("lignes",list=>{lstate={};list.forEach(d=>lstate[d.id]=d);drawBase();render();dRefresh()});
+ store.sub("couche",(list,m)=>{if(!list.length){if(m.fromCache)return;allLayer=baseLayer;layerIsDb=false;if(isEd())seedBase()}else{allLayer=list;layerIsDb=true}derive();drawBase();drawObs();render();dRefresh()});
  store.sub("secteurs",(list,m)=>{if(list.length)sectors=list.sort((a,b)=>(a.ord??0)-(b.ord??0));else if(!m.fromCache&&isEd())store.set("secteurs",DEF,{nom:"Montagne Noire",ord:0});if(!sectors.find(x=>x.id===curSect))curSect=sectors[0].id;sectUI();try{drawBase()}catch(e){}});
  store.sub("activite",(list,m)=>{const ids=new Set(acts.map(a=>a.id));const fresh=actsReady?list.filter(a=>!ids.has(a.id)&&a.by!==me.uid):[];acts=list;actsReady=true;bell();if(tab==="activite")render();if(fresh.length)banner((fresh[0].byName?fresh[0].byName+" : ":"")+fresh[0].text,6000)},{order:"at",lim:80});
- store.sub("heures",list=>{heures=list;if(tab==="heures")render()});
+ store.sub("heures",list=>{heures=list;if(tab==="heures")render();dRefresh()});
  store.sub("config",list=>{cfg=Object.fromEntries(list.map(d=>[d.id,d]));flushNtfy();if(tab==="reglages")render()});
- store.sub("capteurs",l=>{vac=l;drawVac();if(tab==="vide")render()});
- if(isEd())store.sub("membres",list=>{membres=list;if(tab==="reglages")render()});
+ store.sub("capteurs",l=>{vac=l;drawVac();if(tab==="vide")render();dRefresh()});
+ if(isEd())store.sub("membres",list=>{membres=list;if(tab==="reglages")render();dRefresh()});
  sectUI();syncState();}
 
 // ---------- vues du menu
@@ -622,6 +623,128 @@ function showDraft(){const d=draft;if(d.lat!=null&&!d.lineManual){const nl=neare
 }
 
 // ---------- connexion
+
+// ---------- tableau de bord carte plein écran (toutes les érablières)
+let dMap=null,dG={},dBase=null,dSel=null,dSect=ls.get("erab_dsect","*"),dPanel=ls.get("erab_dpanel","alertes"),dLay=ls.get("erab_dlay",{zones:1,lignes:1,obs:1,travaux:1,capteurs:1,pts:1}),dBaseK=ls.get("erab_dbase","sat"),dFlyNext=true;
+const DBASES={sat:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}","Imagerie © Esri"],topo:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}","Topo © Esri"],plan:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","© OpenStreetMap"]};
+const DFULL=`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`;
+const dIn=x=>dSect==="*"||sectOf(x)===dSect;
+const dOpen=()=>obsAll.filter(o=>!isDone(o)&&o.lat!=null&&sOf(o)<=CUR);
+const vSort=(a,b)=>(vSt(a).o-vSt(b).o)||(a.val-b.val);
+const byPrio=(a,b)=>(PRIOS[prOf(a)].o-PRIOS[prOf(b)].o)||String(b.at).localeCompare(String(a.at));
+const dNf=n=>(+n||0).toLocaleString("fr-CA",{maximumFractionDigits:0});
+const dTl=iso=>{try{return new Date(iso).toLocaleTimeString("fr-CA",{hour:"2-digit",minute:"2-digit"})}catch(e){return ""}};
+const dToast=t=>banner(t,3000);
+const dTyping=()=>{const a=document.activeElement,r=$("#dr");return !!(a&&r&&r.contains(a)&&/TEXTAREA|INPUT/.test(a.tagName))};
+const dCenter=()=>{const all=allLayer.flatMap(f=>dec(f.c));if(!all.length)return [46.27,-74.24];return [all.reduce((a,p)=>a+p[1],0)/all.length,all.reduce((a,p)=>a+p[0],0)/all.length]};
+function dPos(v){if(v.lat!=null&&v.lng!=null)return [v.lat,v.lng];const fs=allLayer.filter(f=>sectOf(f)===sectOf(v));
+ if(v.emplacement){const f=fs.find(x=>x.kind==="point"&&String(x.name).toLowerCase()===String(v.emplacement).toLowerCase());if(f){const c=dec(f.c)[0];return [c[1],c[0]]}}
+ if(v.ligne){const n=String(v.ligne).toLowerCase(),f=fs.find(x=>x.kind==="ligne"&&(String(x.name).toLowerCase()===n||("ligne "+String(x.name).toLowerCase())===n));if(f){const c=dec(f.c);return [c[c.length-1][1],c[c.length-1][0]]}}return null}
+function dashOpen(){if(dMap)return;let o=$("#dash");if(!o){o=document.createElement("div");o.id="dash";document.body.appendChild(o)}o.classList.add("on");menu(false);dFlyNext=true;dashBuild();
+ try{const e=document.documentElement;if(!document.fullscreenElement&&e.requestFullscreen&&matchMedia("(min-width:900px)").matches)e.requestFullscreen().catch(()=>{})}catch(e){}}
+function dashClose(){try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}if(dMap){dMap.remove();dMap=null}const o=$("#dash");if(o){o.classList.remove("on");o.innerHTML=""}dSel=null;setTimeout(()=>map.invalidateSize(),100)}
+const dRefresh=()=>{if(dMap)dashUpdate()};
+addEventListener("keydown",e=>{if(e.key==="Escape"&&dMap&&!document.fullscreenElement)dashClose()});
+function dashBuild(){const v=$("#dash");
+ v.innerHTML=`<div class="dw"><aside class="dl" id="dl"></aside><div class="dc"><div id="dmap"></div><div class="dstats" id="dstats"></div>
+  <div class="dtools"><button class="dbtn" id="dFull" title="Plein écran">${DFULL}</button><button class="dbtn" id="dFit" title="Recadrer">⤢</button></div></div><aside class="dr" id="dr"></aside></div>`;
+ dMap=L.map("dmap",{zoomControl:true,attributionControl:true,preferCanvas:false});dSetBase();
+ dG={zones:L.layerGroup().addTo(dMap),lignes:L.layerGroup().addTo(dMap),pts:L.layerGroup().addTo(dMap),obs:L.layerGroup().addTo(dMap),travaux:L.layerGroup().addTo(dMap),capteurs:L.layerGroup().addTo(dMap)};
+ $("#dFull").onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(e){}};
+ $("#dFit").onclick=()=>{dFlyNext=true;dFit()};
+ dMap.on("click",()=>{if(dSel){dSel=null;dRight()}});
+ dFit();dashUpdate();setTimeout(()=>dMap.invalidateSize(),200)}
+function dSetBase(){if(dBase)dMap.removeLayer(dBase);const b=DBASES[dBaseK]||DBASES.sat;dBase=L.tileLayer(b[0],{maxZoom:20,maxNativeZoom:19,attribution:b[1]}).addTo(dMap)}
+function dFit(){const pts=(dSect==="*"?allLayer:allLayer.filter(f=>sectOf(f)===dSect)).flatMap(f=>dec(f.c).map(p=>[p[1],p[0]]));if(!pts.length){dMap.setView(dCenter(),14);return}
+ const b=L.latLngBounds(pts);dFlyNext&&dMap._loaded?dMap.flyToBounds(b,{padding:[30,30],duration:1}):dMap.fitBounds(b,{padding:[30,30]});dFlyNext=false}
+function dashUpdate(){if(!dMap)return;Object.values(dG).forEach(g=>g.clearLayers());const L=L,lab=dMap.getZoom()>=15;
+ allLayer.forEach(f=>{const c=dec(f.c).map(p=>[p[1],p[0]]),dim=dSect!=="*"&&sectOf(f)!==dSect;if(!c.length)return;
+  if(f.kind==="zone"&&dLay.zones)L.polygon(c,{color:f.color||"#3468eb",weight:2,fillOpacity:dim?.03:.12,opacity:dim?.4:1}).bindTooltip(esc(f.name||""),{sticky:true}).addTo(dG.zones);
+  else if(f.kind==="ligne"&&dLay.lignes){const st=lst(f.id).status||"ok",n=dOpen().filter(o=>o.line===f.id).length;
+   L.polyline(c,{color:"#000",weight:7,opacity:dim?.15:.4,interactive:false}).addTo(dG.lignes);
+   L.polyline(c,{color:LSTAT[st].h,weight:st==="ok"?3:5,opacity:dim?.4:1,dashArray:st==="verif"?"8 6":null}).bindTooltip(`${esc(f.name||"Ligne")} · ${LSTAT[st].l}${n?" · "+n+" signalement(s)":""}`,{sticky:true}).on("click",e=>{L.DomEvent.stop(e);dSel={k:"ligne",id:f.id};dPanel="detail";dRight()}).addTo(dG.lignes)}
+  else if(f.kind==="point"&&dLay.pts)L.circleMarker(c[0],{radius:6,color:"#fff",weight:2,fillColor:f.color||"#2fa85f",fillOpacity:1}).bindTooltip(esc(f.name||""),{permanent:lab&&!dim,direction:"right",className:"lbl"}).addTo(dG.pts)});
+ dOpen().forEach(o=>{const t=TYPES[o.type]||TYPES.autre,w=!!t.w;if(w?!dLay.travaux:!dLay.obs)return;const pr=prOf(o);
+  if(pr==="urgent")L.circleMarker([o.lat,o.lng],{radius:17,color:"#d01f1f",weight:3,fill:false,interactive:false,className:"pulse"}).addTo(dG.obs);
+  const m=w?L.marker([o.lat,o.lng],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div style="width:16px;height:16px;margin:3px;transform:rotate(45deg);background:${t.c};border:3px solid #fff;box-shadow:0 1px 4px #0008"></div>`})})
+   :L.circleMarker([o.lat,o.lng],{radius:pr==="urgent"||pr==="haute"?11:9,color:"#fff",weight:3,fillColor:t.c,fillOpacity:1});
+  m.bindTooltip(`${esc(t.l)}${asgOf(o).length?" → "+esc(asgOf(o).map(a=>a.nom).join(", ")):""}`,{direction:"top"}).on("click",e=>{L.DomEvent.stop(e);dSel={k:"obs",id:o.id};dPanel="detail";dRight()}).addTo(w?dG.travaux:dG.obs)});
+ if(dLay.capteurs){const pile={};vac.forEach(v=>{const p=dPos(v);if(!p)return;const k=p[0].toFixed(5)+p[1].toFixed(5),i=pile[k]=(pile[k]??-1)+1,st=vSt(v);
+  L.marker(p,{icon:L.divIcon({className:"",iconSize:[80,24],iconAnchor:[40,12-i*27],html:`<div class="vpill${v.etat==="alarme"?" valarm":""}" style="--c:${st.c}">${(VTYP[v.type]||VTYP.vide).i} ${vFmt(v)}</div>`}),zIndexOffset:400}).bindTooltip(esc(v.nom)+" · "+st.l,{direction:"top"}).on("click",e=>{L.DomEvent.stop(e);dSel={k:"capteur",id:v.id};dPanel="detail";dRight()}).addTo(dG.capteurs)})}
+ if(dFlyNext)dFit();dLeft();if(!dTyping())dRight();dStats()}
+function dStats(){const oo=dOpen().filter(dIn),br=allLayer.filter(f=>f.kind==="ligne"&&dIn(f)&&["bris","rep"].includes(lst(f.id).status)).length,ca=vac.filter(v=>dIn(v)&&["alarme","bas"].includes(v.etat)).length,now=heures.filter(h=>h.open&&dIn(h)).length;
+ $("#dstats").innerHTML=`<span><b style="color:#ff6b5a">${oo.filter(o=>!TYPES[o.type]?.w).length}</b> signalements</span><span><b style="color:#ffc21a">${br}</b> lignes en bris</span><span><b style="color:#ff6b5a">${ca}</b> capteurs en alerte</span><span><b style="color:#7be0a0">${now}</b> au travail</span><span class="meta" style="color:#cfe">${new Date().toLocaleTimeString("fr-CA",{hour:"2-digit",minute:"2-digit"})}</span>`}
+function dLeft(){const n=id=>dOpen().filter(o=>!TYPES[o.type]?.w&&(id==="*"||sectOf(o)===id)).length;
+ $("#dl").innerHTML=`<div class="row" style="margin-bottom:12px"><div class="logo" style="width:36px;height:36px;display:grid;place-items:center"><svg width="30" height="30"><use href="#leaf"/></svg></div><b style="font:700 20px 'Barlow Condensed';flex:1">Tableau de bord</b><button class="btn dsm" id="dBack" title="Quitter">✕</button></div>
+ <div class="dh">Érablières</div>${[["*","Toutes"],...sectors.map(x=>[x.id,x.nom])].map(([k,l])=>`<button class="dsec" data-ds="${esc(k)}" aria-pressed="${dSect===k}"><span>${esc(l)}</span>${n(k)?`<b>${n(k)}</b>`:""}</button>`).join("")}
+ <div class="dh">Couches</div>${[["zones","Zones"],["lignes","Maîtres-lignes"],["pts","Installations"],["obs","Signalements"],["travaux","Travaux"],["capteurs","Capteurs"]].map(([k,l])=>`<label class="dchk"><input type="checkbox" data-dl="${k}" ${dLay[k]?"checked":""}> ${l}</label>`).join("")}
+ <div class="dh">Fond de carte</div><div class="row" style="gap:4px">${[["sat","Satellite"],["topo","Topo"],["plan","Plan"]].map(([k,l])=>`<button class="chip" data-db="${k}" aria-pressed="${dBaseK===k}">${l}</button>`).join("")}</div>
+ <div class="dh">Légende</div><div class="dleg">${Object.values(LSTAT).map(x=>`<div><i style="background:${x.h};outline:1px solid #0006"></i>Ligne ${x.l.toLowerCase()}</div>`).join("")}${Object.entries(TYPES).filter(([k,t])=>!t.w).map(([k,t])=>`<div><i style="background:${t.c};border-radius:50%;width:10px;height:10px"></i>${t.l}</div>`).join("")}<div><i style="border:3px solid #d01f1f;border-radius:50%;width:12px;height:12px;background:none"></i>Urgent</div><div><i style="background:#00b3a4;transform:rotate(45deg);width:10px;height:10px"></i>Travaux</div></div>`;
+ $("#dBack").onclick=dashClose;
+ $("#dl").querySelectorAll("[data-ds]").forEach(b=>b.onclick=()=>{dSect=b.dataset.ds;ls.set("erab_dsect",dSect);dFlyNext=true;dashUpdate()});
+ $("#dl").querySelectorAll("[data-dl]").forEach(c=>c.onchange=()=>{dLay[c.dataset.dl]=c.checked?1:0;ls.set("erab_dlay",dLay);dashUpdate()});
+ $("#dl").querySelectorAll("[data-db]").forEach(b=>b.onclick=()=>{dBaseK=b.dataset.db;ls.set("erab_dbase",dBaseK);dSetBase();dLeft()})}
+function dGo(ll,z=17){dMap.flyTo(ll,Math.max(dMap.getZoom(),z),{duration:.8})}
+function dRight(){const r=$("#dr");if(!r)return;const tabs=[["alertes","Alertes"],["obs","Signalements"],["capteurs","Capteurs"],["equipe","Équipe"]];
+ const P=dPanel==="detail"&&dSel?dDetail():({alertes:dAlertes,obs:dObsList,capteurs:dCaptList,equipe:dEquipe}[dPanel]||dAlertes)();
+ r.innerHTML=`<div class="dseg" style="margin-bottom:10px">${tabs.map(([k,l])=>`<button data-dp="${k}" aria-pressed="${dPanel===k}">${l}</button>`).join("")}</div><div id="drb">${P}</div>`;
+ r.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>{dPanel=b.dataset.dp;ls.set("erab_dpanel",dPanel);dSel=null;dRight()});
+ r.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{const [k,id]=b.dataset.go.split("|");dSel={k,id};const o=k==="obs"?obsAll.find(x=>x.id===id):k==="capteur"?vac.find(x=>x.id===id):null;
+  if(k==="obs"&&o)dGo([o.lat,o.lng]);else if(k==="capteur"&&o){const p=dPos(o);if(p)dGo(p)}else if(k==="ligne"){const f=allLayer.find(x=>x.id===id);if(f)dMap.flyToBounds(dec(f.c).map(p=>[p[1],p[0]]),{padding:[60,60],duration:.8})}
+  dPanel="detail";dRight()});
+ dBindDetail()}
+const dItem=(go,col,title,sub,right="")=>`<div class="ditem" data-go="${go}"><i style="background:${col}"></i><div style="flex:1;min-width:0"><b>${title}</b><div class="meta">${sub}</div></div>${right}</div>`;
+function dAlertes(){const oo=dOpen().filter(dIn).filter(o=>!TYPES[o.type]?.w&&["urgent","haute"].includes(prOf(o))).sort(byPrio),ca=vac.filter(v=>dIn(v)&&["alarme","bas"].includes(v.etat)).sort(vSort),
+ lb=allLayer.filter(f=>f.kind==="ligne"&&dIn(f)&&["bris","rep","verif"].includes(lst(f.id).status)),old=dOpen().filter(dIn).filter(o=>!TYPES[o.type]?.w&&!asgOf(o).length&&Date.now()-new Date(o.at)>86400000);
+ const sec=(t,a)=>a.length?`<div class="dh">${t} · ${a.length}</div>${a.join("")}`:"";
+ const html=sec("Signalements urgents",oo.map(o=>dItem("obs|"+o.id,PRIOS[prOf(o)].c,esc((TYPES[o.type]||TYPES.autre).l),`${PRIOS[prOf(o)].l} · ${esc(sectName(sectOf(o)))} · ${ago(o.at)}${asgOf(o).length?" · → "+esc(asgOf(o).map(a=>a.nom).join(", ")):""}`)))
+  +sec("Capteurs",ca.map(v=>dItem("capteur|"+v.id,vSt(v).c,esc(v.nom),`${vSt(v).l} · ${esc(v.ligne||v.emplacement||sectName(sectOf(v)))}`,`<b>${vFmt(v)}</b>`)))
+  +sec("Maîtres-lignes",lb.map(f=>dItem("ligne|"+f.id,LSTAT[lst(f.id).status].h,esc(f.name||"Ligne"),`${LSTAT[lst(f.id).status].l} · ${esc(sectName(sectOf(f)))}`)))
+  +sec("Non assignés depuis plus de 24 h",old.map(o=>dItem("obs|"+o.id,(TYPES[o.type]||TYPES.autre).c,esc((TYPES[o.type]||TYPES.autre).l),`${esc(sectName(sectOf(o)))} · ${ago(o.at)}`)));
+ return html||`<div class="empty">Aucune alerte. Tout est sous contrôle.</div>`}
+function dObsList(){const oo=dOpen().filter(dIn).sort(byPrio);return oo.length?oo.map(o=>{const t=TYPES[o.type]||TYPES.autre;return dItem("obs|"+o.id,t.c,esc(t.l)+(prOf(o)!=="normale"?` <span class="dbadge" style="--c:${PRIOS[prOf(o)].c}">${PRIOS[prOf(o)].l}</span>`:""),`${esc(sectName(sectOf(o)))} · ${ago(o.at)}${asgOf(o).length?" · → "+esc(asgOf(o).map(a=>a.nom).join(", ")):""}${o.note?" · "+esc(String(o.note).slice(0,50)):""}`)}).join(""):`<div class="empty">Aucun signalement ouvert.</div>`}
+function dCaptList(){const vs=vac.filter(dIn).sort(vSort);return vs.length?vs.map(v=>dItem("capteur|"+v.id,vSt(v).c,esc(v.nom),`${(VTYP[v.type]||VTYP.vide).l} · ${vSt(v).l} · ${ago(v.at)}`,`<b>${vFmt(v)}</b>`)).join(""):`<div class="empty">Aucun capteur.</div>`}
+function dEquipe(){const now=heures.filter(h=>h.open&&dIn(h)),as={};dOpen().forEach(o=>asgOf(o).forEach(a=>{(as[a.nom]=as[a.nom]||[]).push(o)}));
+ return `<div class="dh">Au travail · ${now.length}</div>${now.map(h=>`<div class="ditem"><i style="background:${"#2fa85f"}"></i><div style="flex:1"><b>${esc(h.byName)}</b><div class="meta">${esc((h.task||h.cat||"Travail"))} · ${esc(sectName(sectOf(h)))} · depuis ${dTl(h.start)}</div></div></div>`).join("")||`<div class="small">Personne de punché.</div>`}
+ <div class="dh">Tâches assignées</div>${Object.keys(as).length?Object.entries(as).sort((a,b)=>b[1].length-a[1].length).map(([n,l])=>`<div class="ditem" style="cursor:default"><i style="background:#7a4fd6"></i><div style="flex:1"><b>${esc(n)}</b><div class="meta">${l.length} tâche(s) ouverte(s)${l.some(o=>prOf(o)==="urgent")?" · dont urgente":""}</div></div></div>`).join(""):`<div class="small">Aucune tâche assignée.</div>`}`}
+function dDetail(){const s=dSel;
+ if(s.k==="obs"){const o=obsAll.find(x=>x.id===s.id);if(!o)return `<div class="empty">Introuvable.</div>`;const t=TYPES[o.type]||TYPES.autre,ln=allLayer.find(f=>f.id===o.line),pr=prOf(o),as=asgOf(o);
+  return `<button class="btn dsm" data-dp2="obs">← Liste</button><h3 style="margin:10px 0 4px;display:flex;gap:8px;align-items:center"><span class="dbadge" style="--c:${t.c};font-size:15px">${esc(t.l)}</span></h3>
+  <div class="meta">${esc(sectName(sectOf(o)))}${ln?" · "+esc(ln.name):""} · ${esc(o.byName||"")} · ${ago(o.at)}</div>${o.note?`<p>${esc(o.note)}</p>`:""}
+  <div class="dphotos" id="dPh">${(o.photos||[]).map(id=>`<img data-pid="${esc(id)}" alt="">`).join("")}</div>
+  <div class="small"><a href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank" rel="noopener">Itinéraire Google Maps</a> · ${o.lat.toFixed(5)}, ${o.lng.toFixed(5)}</div>
+  ${isEd()?`<div class="dh">Priorité</div><div class="row" style="gap:4px">${Object.entries(PRIOS).map(([k,v])=>`<button class="chip" data-dpr="${k}" aria-pressed="${k===pr}" style="${k===pr?`background:${v.c};border-color:${v.c};color:#fff`:""}">${v.l}</button>`).join("")}</div>
+  <div class="dh">Assigner à</div><div class="row" style="gap:4px">${membres.map(m=>`<button class="chip" data-das="${esc(m.id)}" data-nm="${esc(m.nom||m.id.split("@")[0])}" aria-pressed="${as.some(a=>a.email===m.id)}">${esc(m.nom||m.id.split("@")[0])}</button>`).join("")||`<span class="small">—</span>`}</div>
+  <div class="row" style="margin-top:8px"><button class="btn pri dsm" id="dAsSave">Enregistrer et avertir</button></div>`:(pr!=="normale"||as.length?`<p class="small">Priorité ${PRIOS[pr].l.toLowerCase()}${as.length?" · assigné à "+esc(as.map(a=>a.nom).join(", ")):""}</p>`:"")}
+  <div class="dh">Réparation</div><textarea id="dRep" placeholder="Ce qui a été fait"></textarea><div class="row" style="margin-top:8px"><button class="btn pri dsm" id="dRepOk">Marquer réglé</button></div>`}
+ if(s.k==="capteur"){const v=vac.find(x=>x.id===s.id);if(!v)return `<div class="empty">Introuvable.</div>`;const st=vSt(v);
+  return `<button class="btn dsm" data-dp2="capteurs">← Liste</button><h3 style="margin:10px 0 2px">${esc(v.nom)}</h3><div class="meta">${(VTYP[v.type]||VTYP.vide).l} · ${esc(v.ligne||v.emplacement||"")} · ${esc(sectName(sectOf(v)))}</div>
+  <div style="font:700 46px/1.1 'Barlow Condensed';margin:10px 0;color:${st.c}">${vFmt(v)}</div><span class="dbadge" style="--c:${st.c}">${st.l}</span><p class="small">Mesure ${ago(v.at)} · source ${esc(v.source||"")}${v.bat!=null?" · batterie "+esc(v.bat):""}</p>`}
+ if(s.k==="ligne"){const f=allLayer.find(x=>x.id===s.id);if(!f)return `<div class="empty">Introuvable.</div>`;const st=lst(f.id).status||"ok",c=dec(f.c);let len=0;for(let i=1;i<c.length;i++)len+=hav(c[i-1],c[i]);
+  const oo=dOpen().filter(o=>o.line===f.id),vs=vac.filter(v=>String(v.ligne).toLowerCase()===String(f.name).toLowerCase()&&sectOf(v)===sectOf(f));
+  return `<button class="btn dsm" data-dp2="alertes">← Retour</button><h3 style="margin:10px 0 2px">${esc(f.name||"Ligne")}</h3><div class="meta">${esc(sectName(sectOf(f)))} · ${dNf(len)} m${f.ent?" · "+dNf(f.ent)+" entailles":""}${f.dia?" · "+esc(f.dia):""}</div>
+  <div class="dh">État de la ligne</div><div class="row" style="gap:4px">${Object.entries(LSTAT).map(([k,x])=>`<button class="chip" data-dls="${k}" aria-pressed="${k===st}">${x.l}</button>`).join("")}</div>
+  ${vs.length?`<div class="dh">Capteurs</div>${vs.map(v=>dItem("capteur|"+v.id,vSt(v).c,esc(v.nom),vSt(v).l,`<b>${vFmt(v)}</b>`)).join("")}`:""}
+  <div class="dh">Signalements ouverts · ${oo.length}</div>${oo.map(o=>dItem("obs|"+o.id,(TYPES[o.type]||TYPES.autre).c,esc((TYPES[o.type]||TYPES.autre).l),ago(o.at))).join("")||`<div class="small">Aucun.</div>`}`}
+ return ""}
+const dPhoto=id=>getPhoto(id);
+function dBindDetail(){const r=$("#dr");if(!r||!dSel)return;
+ r.querySelectorAll("[data-dp2]").forEach(b=>b.onclick=()=>{dPanel=b.dataset.dp2;dSel=null;dRight()});
+ r.querySelectorAll("img[data-pid]").forEach(async im=>{const d=await dPhoto(im.dataset.pid);if(d){im.src=d;im.onclick=()=>window.open().document.write(`<img src="${d}" style="max-width:100%">`)}});
+ const o=dSel.k==="obs"?obsAll.find(x=>x.id===dSel.id):null;
+ if(o){let pr=prOf(o),sel=asgOf(o).map(a=>({...a}));
+  r.querySelectorAll("[data-dpr]").forEach(b=>b.onclick=()=>{pr=b.dataset.dpr;r.querySelectorAll("[data-dpr]").forEach(x=>{const on=x===b,c=PRIOS[x.dataset.dpr].c;x.setAttribute("aria-pressed",on);x.style.cssText=on?`background:${c};border-color:${c};color:#fff`:""})});
+  r.querySelectorAll("[data-das]").forEach(b=>b.onclick=()=>{const e=b.dataset.das,i=sel.findIndex(a=>a.email===e);if(i>=0)sel.splice(i,1);else sel.push({email:e,nom:b.dataset.nm});b.setAttribute("aria-pressed",i<0)});
+  const sv=r.querySelector("#dAsSave");if(sv)sv.onclick=async()=>{const before=asgOf(o).map(a=>a.email),added=sel.filter(a=>!before.includes(a.email)),t=TYPES[o.type]||TYPES.autre;
+   await store.upd("obs",o.id,{prio:pr,assign:sel,assignBy:me.nom,assignAt:new Date().toISOString()});
+   if(added.length)await store.set("activite",nid("a"),{kind:"assign",text:`📌 ${added.map(a=>a.nom).join(", ")} : ${t.l} (priorité ${PRIOS[pr].l.toLowerCase()})`,sect:sectOf(o),by:me.uid,byName:me.nom,at:new Date().toISOString(),season:CUR,obs:o.id});
+   if(added.length)notify(`📌 ${added.map(a=>a.nom).join(", ")} : ${t.l}`);dToast(added.length?"Assigné. L'équipe est avertie.":"Enregistré.")};
+  const rp=r.querySelector("#dRepOk");if(rp)rp.onclick=async()=>{const note=r.querySelector("#dRep").value.trim(),t=TYPES[o.type]||TYPES.autre;
+   await store.upd("obs",o.id,{status:"regle",doneAt:new Date().toISOString(),doneBy:me.uid,doneByName:me.nom,doneSeason:CUR,repairNote:note});
+   await store.set("activite",nid("a"),{kind:"reparation",text:"Réparé : "+t.l+(note?" — « "+note.slice(0,80)+" »":""),sect:sectOf(o),by:me.uid,byName:me.nom,at:new Date().toISOString(),season:CUR,obs:o.id});
+   notify("Réparé : "+t.l);dToast("Marqué réglé");dSel=null;dPanel="obs";dRight()}}
+ if(dSel.k==="ligne")r.querySelectorAll("[data-dls]").forEach(b=>b.onclick=async()=>{const id=dSel.id,cur=lstate[id]||{};const {id:_,...rest}=cur;
+  await store.set("lignes",id,{...rest,status:b.dataset.dls,season:CUR,at:new Date().toISOString(),by:me.uid,byName:me.nom});dToast("État de la ligne mis à jour")})}
 const gate=$("#gate"),gc=$("#gatecard");
 function showGate(html){gc.innerHTML=html;gate.classList.add("on")}
 function hideGate(){gate.classList.remove("on")}
