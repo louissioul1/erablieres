@@ -657,7 +657,7 @@ function dashBuild(){const v=$("#dash");
 function dSetBase(){if(dBase)dMap.removeLayer(dBase);const b=DBASES[dBaseK]||DBASES.sat;dBase=L.tileLayer(b[0],{maxZoom:20,maxNativeZoom:19,attribution:b[1]}).addTo(dMap)}
 function dFit(){const pts=(dSect==="*"?allLayer:allLayer.filter(f=>sectOf(f)===dSect)).flatMap(f=>dec(f.c).map(p=>[p[1],p[0]]));if(!pts.length){dMap.setView(dCenter(),14);return}
  const b=L.latLngBounds(pts);dFlyNext&&dMap._loaded?dMap.flyToBounds(b,{padding:[30,30],duration:1}):dMap.fitBounds(b,{padding:[30,30]});dFlyNext=false}
-function dashUpdate(){if(!dMap)return;Object.values(dG).forEach(g=>g.clearLayers());const L=L,lab=dMap.getZoom()>=15;
+function dashUpdate(){if(!dMap)return;Object.values(dG).forEach(g=>g.clearLayers());const lab=dMap.getZoom()>=15;
  allLayer.forEach(f=>{const c=dec(f.c).map(p=>[p[1],p[0]]),dim=dSect!=="*"&&sectOf(f)!==dSect;if(!c.length)return;
   if(f.kind==="zone"&&dLay.zones)L.polygon(c,{color:f.color||"#3468eb",weight:2,fillOpacity:dim?.03:.12,opacity:dim?.4:1}).bindTooltip(esc(f.name||""),{sticky:true}).addTo(dG.zones);
   else if(f.kind==="ligne"&&dLay.lignes){const st=lst(f.id).status||"ok",n=dOpen().filter(o=>o.line===f.id).length;
