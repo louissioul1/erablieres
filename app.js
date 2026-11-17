@@ -646,8 +646,8 @@ function dashClose(){try{document.fullscreenElement&&document.exitFullscreen()}c
 const dRefresh=()=>{if(dMap)dashUpdate()};
 addEventListener("keydown",e=>{if(e.key==="Escape"&&dMap&&!document.fullscreenElement)dashClose()});
 function dashBuild(){const v=$("#dash");
- v.innerHTML=`<div class="dw"><aside class="dl" id="dl"></aside><div class="dc"><div id="dmap"></div><div class="dstats" id="dstats"></div>
-  <div class="dtools"><button class="dbtn" id="dFull" title="Plein écran">${DFULL}</button><button class="dbtn" id="dFit" title="Recadrer">⤢</button></div></div><aside class="dr" id="dr"></aside></div>`;
+ v.innerHTML=`<div class="dw"><div class="dl" id="dl"></div><div class="dc"><div id="dmap"></div><div class="dstats" id="dstats"></div>
+  <div class="dtools"><button class="dbtn" id="dFull" title="Plein écran">${DFULL}</button><button class="dbtn" id="dFit" title="Recadrer">⤢</button></div></div><div class="dr" id="dr"></div></div>`;
  dMap=L.map("dmap",{zoomControl:true,attributionControl:true,preferCanvas:false});dSetBase();
  dG={zones:L.layerGroup().addTo(dMap),lignes:L.layerGroup().addTo(dMap),pts:L.layerGroup().addTo(dMap),obs:L.layerGroup().addTo(dMap),travaux:L.layerGroup().addTo(dMap),capteurs:L.layerGroup().addTo(dMap)};
  $("#dFull").onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(e){}};
