@@ -116,7 +116,7 @@ function Fire(db,F){
   hardSet:(c,id,v)=>F.setDoc(F.doc(db,c,id),v)}}
 
 // ---------- état
-let obs=[], lstate={}, acts=[], membres=[], cfg={}, pending=false;
+let vac=[], obs=[], lstate={}, acts=[], membres=[], cfg={}, pending=false;
 let tab="journal", fStat="ouvert", fType="", fAsg="", editMode=false, drawing=null, shapeEdit=null, actsReady=false, pickMode=false;
 let lastSeen=ls.get("erab_seen","");
 const isEd=()=>role==="admin";
@@ -137,7 +137,7 @@ function setBase(k){if(!BASES[k])k="hyb";baseKey=k;ls.set("erab_base",k);if(base
  document.querySelectorAll(".bases").forEach(el=>el.innerHTML=Object.entries(BASES).map(([kk,v])=>`<button class="chip" data-base="${kk}" aria-pressed="${kk===k}">${v.l}</button>`).join(""));
  document.querySelectorAll("[data-base]").forEach(x=>x.onclick=()=>setBase(x.dataset.base))}
 setBase(baseKey);
-const gZones=L.layerGroup().addTo(map), gLines=L.layerGroup().addTo(map), gPts=L.layerGroup().addTo(map), gObs=L.layerGroup().addTo(map), gTmp=L.layerGroup().addTo(map);
+const gZones=L.layerGroup().addTo(map), gLines=L.layerGroup().addTo(map), gPts=L.layerGroup().addTo(map), gObs=L.layerGroup().addTo(map), gVac=L.layerGroup().addTo(map), gTmp=L.layerGroup().addTo(map);
 map.createPane("me").style.zIndex=650;const meR=L.svg({pane:"me"});const gMe=L.layerGroup().addTo(map);
 let lineLayers={}, fitted=false;baseReady=true;
 const ll = c=>c.map(p=>[p[1],p[0]]);
@@ -179,7 +179,7 @@ $("#bBell").onclick=()=>{setTab("activite");menu(true)};
 const toMap=()=>menu(false);
 
 // ---------- secteurs (érablières)
-function switchSect(id,keepView){curSect=id;ls.set("erab_sect",id);obs=obsAll.filter(o=>sectOf(o)===curSect);derive();if(!keepView){fitted=false;flyNext=true}drawBase();drawObs();render();sectUI();if(!keepView&&!bounds())banner("Secteur vide : ajoutez sa carte (Menu › Carte › Importer un KML, ou Modifier la carte).",6000)}
+function switchSect(id,keepView){curSect=id;ls.set("erab_sect",id);obs=obsAll.filter(o=>sectOf(o)===curSect);derive();if(!keepView){fitted=false;flyNext=true}drawBase();drawObs();drawVac();render();sectUI();if(!keepView&&!bounds())banner("Secteur vide : ajoutez sa carte (Menu › Carte › Importer un KML, ou Modifier la carte).",6000)}
 function sectUI(){$("#sectName").textContent=sectName(curSect);$("#dTitle").textContent=sectName(curSect);
  $("#sectList").innerHTML=sectors.map(x=>`<button class="sitem" data-sect="${esc(x.id)}" aria-pressed="${x.id===curSect}"><span>${esc(x.nom)}</span><span class="meta">${obsAll.filter(o=>sectOf(o)===x.id&&!isDone(o)&&sOf(o)===CUR).length||""}</span></button>`).join("")+(isEd()&&store?`<button class="sitem add" id="sAdd">+ Nouveau secteur</button>`:"");
  document.querySelectorAll("[data-sect]").forEach(b=>b.onclick=()=>{$("#spop").classList.remove("on");if(b.dataset.sect!==curSect)switchSect(b.dataset.sect)});
@@ -266,13 +266,14 @@ function startData(){
  store.sub("activite",(list,m)=>{const ids=new Set(acts.map(a=>a.id));const fresh=actsReady?list.filter(a=>!ids.has(a.id)&&a.by!==me.uid):[];acts=list;actsReady=true;bell();if(tab==="activite")render();if(fresh.length)banner((fresh[0].byName?fresh[0].byName+" : ":"")+fresh[0].text,6000)},{order:"at",lim:80});
  store.sub("heures",list=>{heures=list;if(tab==="heures")render()});
  store.sub("config",list=>{cfg=Object.fromEntries(list.map(d=>[d.id,d]));flushNtfy();if(tab==="reglages")render()});
+ store.sub("capteurs",l=>{vac=l;drawVac();if(tab==="vide")render()});
  if(isEd())store.sub("membres",list=>{membres=list;if(tab==="reglages")render()});
  sectUI();syncState();}
 
 // ---------- vues du menu
 function setTab(v){tab=v;document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));if(v==="activite"){lastSeen=new Date().toISOString();ls.set("erab_seen",lastSeen);bell()}render()}
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>setTab(b.dataset.v));
-function render(){if(!store)return;const v=$("#view");v.innerHTML=({journal:vJournal,activite:vAct,lignes:vLignes,zones:vZones,carte:vCarte,reglages:vReg,heures:vHeures})[tab]();bindView(v);hydrate(v)}
+function render(){if(!store)return;const v=$("#view");v.innerHTML=({journal:vJournal,vide:vVide,activite:vAct,lignes:vLignes,zones:vZones,carte:vCarte,reglages:vReg,heures:vHeures})[tab]();bindView(v);hydrate(v)}
 function seasonBar(){const ss=[...new Set([CUR,...obs.map(sOf)])].sort((a,b)=>b-a);
  return `<div class="filters" style="align-items:center"><span class="small" style="margin-right:4px">Saison</span>${ss.map(s=>`<button class="chip" data-season="${s}" aria-pressed="${s===viewSeason}">${s}${s===CUR?" (en cours)":""}</button>`).join("")}</div>
  <p class="small" style="margin:-4px 0 10px">${viewSeason===CUR?`Saison ${CUR} depuis le 1<sup>er</sup> août ${CUR-1}. Les réparations des saisons passées sont archivées; les bris non réparés sont reportés.`:`Archive de la saison ${viewSeason}.`}</p>`}
@@ -287,6 +288,28 @@ function vJournal(){const all=visObs(),open=all.filter(o=>!isDone(o));
  <div class="filters">${[["","Tous types"],...Object.entries(TYPES).map(([k,t])=>[k,t.l])].map(([k,l])=>`<button class="chip" data-ft="${k}" aria-pressed="${fType===k}">${l}</button>`).join("")}</div>
  ${list.length?list.map(o=>{const t=TYPES[o.type]||TYPES.autre,ln=lineLabel(o.line);return `<div class="item" data-obs="${esc(o.id)}">${o.photos&&o.photos[0]?pimg(o.photos[0],"thumb"):`<div class="thumb"></div>`}<div style="flex:1"><span class="badge" style="--c:${t.c}">${t.l}</span>${prOf(o)!=="normale"&&!isDone(o)?` <span class="badge" style="--c:${PRIOS[prOf(o)].c}">${PRIOS[prOf(o)].l}</span>`:""}${asgOf(o).length?` <span class="meta">→ ${esc(asgOf(o).map(a=>a.nom).join(", "))}</span>`:""}${isWork(o)?` <span class="meta">· ${stLabel(o)}</span>`:o.status==="regle"?` <span class="meta">· réparé</span>`:""}${sOf(o)<viewSeason?` <span class="meta">· reporté de ${sOf(o)}</span>`:""}<p>${esc(o.note)||"<span class=meta>Sans note</span>"}</p><div class="meta">${fmtD(o.at)}${ln?" · "+esc(ln):""}${o.byName?" · "+esc(o.byName):""}</div></div></div>`}).join(""):`<div class="empty">Aucun signalement ${fStat==="ouvert"?"ouvert ":""}pour cette saison.<br>Touchez <b>Signaler</b> pour ajouter un bris, une photo ou un point GPS.</div>`}`}
 function vAct(){return `<div class="h2">Activité</div>${store&&store.kind==="fire"?`<div class="row" style="margin-bottom:10px"><button class="btn pri" id="bMsg" style="flex:1">📣 Envoyer un message à l'équipe</button></div>`:""}${acts.length?acts.map(a=>{const k=ACT[a.kind]||ACT.carte;return `<div class="item" ${a.obs?`data-obs="${esc(a.obs)}"`:""}><span class="badge" style="--c:${k.c};width:104px;flex:none">${k.l}</span><div style="flex:1"><div>${esc(a.text)}</div><div class="meta">${sectors.length>1?esc(sectName(sectOf(a)))+" · ":""}${ago(a.at)}${a.byName?" · "+esc(a.byName):""}</div></div></div>`}).join(""):`<div class="empty">Rien encore. Les signalements, réparations et changements de la carte apparaîtront ici.</div>`}`}
+// ---------- capteurs de vide (passerelle erab-bridge)
+const VSTAT={alarme:{l:"Alarme",c:"#d01f1f",o:0},bas:{l:"Attention",c:"#f08a00",o:1},hors_ligne:{l:"Hors ligne",c:"#7d8a82",o:2},ok:{l:"OK",c:"#2fa85f",o:3}};
+const VTYP={vide:{l:"Vide",i:"🌀"},niveau:{l:"Niveau",i:"🛢️"},temperature:{l:"Température",i:"🌡️"},debit:{l:"Débit",i:"💧"},concentration:{l:"Brix",i:"🍁"},pression:{l:"Pression",i:"⏲️"},marche:{l:"Marche",i:"⚙️"},compteur:{l:"Compteur",i:"🔢"},autre:{l:"Mesure",i:"•"}};
+const vSt=v=>{const b=VSTAT[v.etat]||VSTAT.ok;if(v.etat==="alarme"||v.etat==="bas"){const t=v.type||"vide";const l=t==="vide"?(v.etat==="alarme"?"Fuite probable":"Vide bas"):t==="niveau"?(v.val>=50?(v.etat==="alarme"?"Presque plein":"Niveau haut"):(v.etat==="alarme"?"Presque vide":"Niveau bas")):b.l;return {...b,l}}return b};
+const vFmt=v=>v.etat==="hors_ligne"?"—":v.type==="marche"?(v.val?"ON":"OFF"):(v.unit==="inHg"||!v.type||v.type==="vide")?(+v.val).toFixed(1)+'"':(+v.val).toFixed(v.type==="niveau"||v.type==="debit"?0:1)+(v.unit?" "+v.unit:"");
+function vacPos(v){if(v.lat!=null&&v.lng!=null)return [v.lat,v.lng];if(v.emplacement){const e=String(v.emplacement).toLowerCase(),f=layer.find(x=>x.kind==="point"&&String(x.name).toLowerCase()===e);if(f){const c=dec(f.c)[0];return [c[1],c[0]]}}if(!v.ligne)return null;const n=String(v.ligne).toLowerCase(),l=lines.find(x=>String(x.name).toLowerCase()===n||lineLabel(x.id).toLowerCase()===n);if(!l)return null;const c=l.coords[l.coords.length-1];return [c[1],c[0]]}
+const vacHere=()=>vac.filter(v=>sectOf(v)===curSect).sort((a,b)=>(vSt(a).o-vSt(b).o)||(a.val-b.val));
+function drawVac(){gVac.clearLayers();const pile={};vacHere().forEach(v=>{const p=vacPos(v);if(!p)return;const st=vSt(v),pk=p[0].toFixed(5)+","+p[1].toFixed(5),k=pile[pk]=(pile[pk]??-1)+1;
+ L.marker(p,{icon:L.divIcon({className:"",iconSize:[74,24],iconAnchor:[37,12-k*27],html:`<div class="vpill${v.etat==="alarme"?" valarm":""}" style="--c:${st.c}">${(VTYP[v.type]||VTYP.vide).i} ${vFmt(v)}</div>`}),zIndexOffset:500})
+  .on("click",e=>{L.DomEvent.stop(e);if(drawing||pickMode||editMode||shapeEdit)return;openVac(v)}).bindTooltip(esc(v.nom)+" · "+st.l,{direction:"top"}).addTo(gVac)})}
+function openVac(v){const st=vSt(v),p=vacPos(v);openSheet(`<div class="row" style="justify-content:space-between"><span class="badge" style="--c:${st.c};font-size:16px">${st.l}</span><button class="btn" data-close>Fermer</button></div>
+ <div style="font:700 44px/1.1 'Barlow Condensed',sans-serif;margin:10px 0">${vFmt(v).replace('"',' <span style="font-size:22px">po Hg</span>')}</div>
+ <div><b>${esc(v.nom)}</b> <span class="meta">· ${(VTYP[v.type]||VTYP.vide).l}</span>${v.ligne?" · "+esc(v.ligne):""}${v.emplacement?" · "+esc(v.emplacement):""}</div>
+ <div class="meta">Mesure ${ago(v.at)} · source ${esc(v.source||"")}${v.bat!=null?" · batterie "+esc(v.bat):""}</div>
+ ${p?`<div class="pos">${p[0].toFixed(6)}, ${p[1].toFixed(6)}${dist({lat:p[0],lng:p[1]})} · <a href="${gmaps(p[0],p[1])}" target="_blank" rel="noopener">Google Maps</a></div>`:`<p class="small">Position inconnue : associez ce capteur à une ligne ou une installation dans l'app Gestion › Capteurs.</p>`}
+ ${v.etat!=="ok"&&v.etat!=="hors_ligne"&&(v.type||"vide")==="vide"?`<div class="row" style="margin-top:12px"><button class="btn pri" id="vSig" style="flex:1">Signaler une fuite à cet endroit</button></div>`:""}`);
+ const b=$("#vSig");if(b)b.onclick=()=>{closeSheet();const ln=v.ligne?lines.find(x=>String(x.name).toLowerCase()===String(v.ligne).toLowerCase()):null;openAdd(p?{lat:p[0],lng:p[1],src:"capteur "+v.nom}:null,ln?ln.id:null);draft.type="fuite";draft.note="Vide "+vFmt(v)+" — capteur "+v.nom;showDraft()}}
+let vFilt="";
+function vVide(){const all=vacHere(),vs=all.filter(v=>!vFilt||(v.type||"vide")===vFilt),n=k=>all.filter(v=>v.etat===k).length,types=[...new Set(all.map(v=>v.type||"vide"))];
+ return `<div class="h2">Capteurs en temps réel</div><div class="kpis"><div class="kpi"><b style="color:#d01f1f">${n("alarme")}</b><span>alarmes</span></div><div class="kpi"><b style="color:#f08a00">${n("bas")}</b><span>à surveiller</span></div><div class="kpi"><b>${all.length}</b><span>capteurs</span></div></div>
+ ${types.length>1?`<div class="filters">${[["","Tous"],...types.map(t=>[t,(VTYP[t]||VTYP.autre).i+" "+(VTYP[t]||VTYP.autre).l])].map(([k,l])=>`<button class="chip" data-vf="${k}" aria-pressed="${vFilt===k}">${l}</button>`).join("")}</div>`:""}
+ ${vs.length?vs.map(v=>{const st=vSt(v);return `<div class="item" data-vac="${esc(v.id)}"><div class="vpill" style="--c:${st.c};flex:none">${vFmt(v)}</div><div style="flex:1"><b>${esc(v.nom)}</b> <span class="meta">· ${(VTYP[v.type]||VTYP.vide).l}${v.ligne?" · "+esc(v.ligne):""}${v.emplacement?" · "+esc(v.emplacement):""}</span><div class="meta">${st.l} · ${ago(v.at)}</div></div></div>`}).join(""):`<div class="empty">Aucun capteur pour ce secteur.<br>Branchez la clé USB erab-bridge sur le système de surveillance et tapez <b>sh install.sh</b>.</div>`}`}
 function vLignes(){const tot=lines.reduce((a,l)=>a+l.len,0);
  return `<div class="h2">Maîtres-lignes · saison ${viewSeason}</div><table><thead><tr><th>Ligne</th><th class="n">Longueur</th><th>État</th><th class="n">Ouverts</th></tr></thead><tbody>${lines.map(l=>{const st=lst(l.id).status||"ok",n=visObs().filter(o=>o.line===l.id&&!isDone(o)).length;return `<tr class="click" data-line="${l.id}"><td>${esc(l.label)}</td><td class="n">${fmtM(l.len)}</td><td><span class="badge" style="--c:${st==="ok"?"#2fa85f":LSTAT[st].h}">${LSTAT[st].l}</span></td><td class="n">${n||"–"}</td></tr>`}).join("")}</tbody><tfoot><tr><td>Total · ${lines.length} lignes</td><td class="n">${fmtM(tot)}</td><td></td><td></td></tr></tfoot></table><p class="small">L'état des lignes repart à OK à chaque nouvelle saison. Longueurs à plat, sans dénivelé.</p>`}
 function vZones(){const ha=zones.reduce((a,z)=>a+(+z.ha||0),0),pot=zones.reduce((a,z)=>a+(+z.pot||0),0);
@@ -336,6 +359,8 @@ function bindView(v){
  v.querySelectorAll("[data-fa]").forEach(b=>b.onclick=()=>{fAsg=b.dataset.fa;render()});
  v.querySelectorAll("[data-ft]").forEach(b=>b.onclick=()=>{fType=b.dataset.ft;render()});
  v.querySelectorAll("[data-obs]").forEach(b=>b.onclick=()=>{const o=obsAll.find(x=>x.id===b.dataset.obs);if(o){if(sectOf(o)!==curSect)switchSect(sectOf(o),true);toMap();follow=false;locBtn();if(o.lat!=null)map.setView([o.lat,o.lng],Math.max(map.getZoom(),18));openObs(o)}});
+ v.querySelectorAll("[data-vf]").forEach(b=>b.onclick=()=>{vFilt=b.dataset.vf;render()});
+ v.querySelectorAll("[data-vac]").forEach(b=>b.onclick=()=>{const x=vac.find(y=>y.id===b.dataset.vac);if(!x)return;toMap();const p=vacPos(x);if(p){follow=false;locBtn();map.setView(p,Math.max(map.getZoom(),17))}openVac(x)});
  v.querySelectorAll("[data-line]").forEach(b=>b.onclick=()=>{const l=lines.find(x=>x.id===b.dataset.line);toMap();follow=false;locBtn();map.fitBounds(lineLayers[l.id].hit.getBounds(),{padding:[60,60],maxZoom:19});openLine(l)});
  v.querySelectorAll("[data-zone]").forEach(b=>b.onclick=()=>{const z=zones.find(x=>x.id===b.dataset.zone);toMap();map.fitBounds(L.latLngBounds(ll(z.coords)),{padding:[30,30]})});
  v.querySelectorAll("[data-feat]").forEach(b=>b.onclick=()=>{const f=[...lines,...zones,...pts,...stations].find(x=>x.id===b.dataset.feat);if(!f)return;toMap();map.fitBounds(L.latLngBounds(ll(f.coords)),{padding:[60,60],maxZoom:19});if(isEd()){setEdit(true);openFeat(f)}});
