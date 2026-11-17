@@ -1,5 +1,5 @@
 // Service worker de l'app Gestion (portée ./gestion/)
-const V = "gest-v2";
+const V = "gest-v5";
 const SHELL = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "../config.js", "../icon.svg"];
 const LIBS = /^(https:\/\/unpkg\.com|https:\/\/www\.gstatic\.com\/firebasejs|https:\/\/fonts\.(googleapis|gstatic)\.com)/;
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
