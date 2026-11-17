@@ -114,6 +114,8 @@ textarea{min-height:84px;resize:vertical}
 .photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .photos img{width:84px;height:84px;object-fit:cover;border-radius:8px}
 .big{width:100%;border-radius:10px;margin:6px 0;display:block;background:var(--chip);min-height:120px}
+.vpill{background:var(--c);color:#fff;font:700 14px/1 "Barlow Condensed",Barlow,sans-serif;padding:5px 8px;border-radius:12px;border:2px solid #fff;box-shadow:0 1px 5px #0008;text-align:center;min-width:44px;white-space:nowrap}
+.valarm{animation:va 1.2s infinite}@keyframes va{50%{transform:scale(1.15)}}
 .asg{border:1px solid var(--line);border-radius:12px;padding:4px 12px 12px;margin:10px 0;background:color-mix(in srgb,#7a4fd6 5%,transparent)}
 .chip[data-pr][aria-pressed=true]{background:var(--c);border-color:var(--c);color:#fff}
 .pulse{animation:pu 1.6s infinite}@keyframes pu{50%{stroke-opacity:.2}}
@@ -167,6 +169,7 @@ img.ploading{background:linear-gradient(90deg,var(--chip) 25%,color-mix(in srgb,
  <div class="dhead"><svg class="lf" width="30" height="30" aria-hidden="true" style="margin-right:8px"><use href="#leaf"/></svg><b id="dTitle" style="flex:1">Montagne Noire</b><button class="ibtn" id="bClose" aria-label="Fermer le menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
  <div class="tabs" role="tablist">
   <button role="tab" data-v="journal" aria-selected="true">Journal</button>
+  <button role="tab" data-v="vide" aria-selected="false">Capteurs</button>
   <button role="tab" data-v="heures" aria-selected="false">Heures</button>
   <button role="tab" data-v="activite" aria-selected="false">Activité</button>
   <button role="tab" data-v="lignes" aria-selected="false">Lignes</button>
