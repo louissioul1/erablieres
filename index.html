@@ -137,6 +137,39 @@ img.ploading{background:linear-gradient(90deg,var(--chip) 25%,color-mix(in srgb,
 .gate h2{font:700 30px/1.05 "Barlow Condensed";margin:0 0 4px}
 @media(max-width:760px){.leaflet-control-zoom{display:none}#synctxt{display:none}}
 @media(prefers-reduced-motion:reduce){aside{transition:none}}
+
+/* tableau de bord carte plein écran */
+#dash{position:fixed;inset:0;z-index:3000;background:var(--panel);display:none;overflow:hidden}
+#dash.on{display:block}
+.dw{display:grid;grid-template-columns:270px 1fr 380px;height:100vh;height:100dvh}
+.dl,.dr{background:var(--panel);overflow:auto;padding:14px;padding-top:calc(14px + env(safe-area-inset-top));border-right:1px solid var(--line)}
+.dr{border-right:0;border-left:1px solid var(--line)}
+.dc{position:relative;min-width:0}
+#dmap{position:absolute;inset:0}
+.dstats{position:absolute;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:500;display:flex;gap:14px;background:#0d1a12e6;color:#fff;border-radius:12px;padding:8px 16px;font-size:14px;white-space:nowrap;box-shadow:0 2px 10px #0006}
+.dstats b{font:700 20px "Barlow Condensed";margin-right:4px}
+.dtools{position:absolute;right:10px;top:calc(10px + env(safe-area-inset-top));z-index:500;display:flex;flex-direction:column;gap:6px}
+.dbtn{width:40px;height:40px;border-radius:10px;border:0;background:var(--panel);color:var(--ink);box-shadow:0 1px 6px #0005;cursor:pointer;display:grid;place-items:center;font-size:18px}
+.dh{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mute);font-weight:700;margin:14px 0 6px}
+.dsec{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:none;padding:8px 10px;border-radius:9px;cursor:pointer;text-align:left;font-weight:500}
+.dsec[aria-pressed=true]{background:var(--forest);color:var(--bg)}
+.dsec b{background:var(--maple);color:#fff;border-radius:10px;padding:0 7px;font-size:12px}
+.dchk{display:flex;gap:8px;align-items:center;padding:4px 2px;cursor:pointer}
+.dchk input{width:18px;height:18px;accent-color:var(--forest)}
+.dleg div{display:flex;align-items:center;gap:8px;font-size:13px;padding:2px 0}.dleg i{width:18px;height:4px;display:inline-block;flex:none}
+.ditem{display:flex;gap:10px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:8px}
+.ditem:hover{background:var(--chip)}
+.ditem>i{width:10px;height:10px;border-radius:50%;flex:none}
+.dphotos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.dphotos img{width:96px;height:96px;object-fit:cover;border-radius:8px;background:var(--chip);cursor:zoom-in}
+.dseg{display:flex;background:var(--chip);border-radius:10px;padding:3px;gap:2px;margin-bottom:10px}
+.dseg button{flex:1;border:0;background:none;border-radius:8px;padding:8px 4px;font-size:14px;font-weight:600;cursor:pointer;color:var(--mute)}
+.dseg button[aria-pressed=true]{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px #0003}
+.dbadge{display:inline-block;background:var(--c);color:#fff;border-radius:8px;padding:1px 8px;font-size:12px;font-weight:700}
+.btn.dsm{min-height:36px;padding:0 12px;font-size:14px}
+#dash .chip{min-height:34px;padding:4px 10px}
+#dash .leaflet-tooltip.lbl{color:#fff}
+@media (max-width:1100px){.dw{grid-template-columns:230px 1fr 320px}}
+@media (max-width:760px){#dash{overflow:auto}.dw{grid-template-columns:1fr;grid-template-rows:60vh auto auto;height:auto}.dc{height:60vh;order:-1}.dr{order:0}.dl{order:1}.dl,.dr{border:0;padding-top:14px}.dstats{font-size:12px;gap:8px;padding:6px 10px;left:10px;transform:none;max-width:calc(100% - 70px);overflow:auto}}
 </style>
 </head>
 <body>
@@ -159,6 +192,7 @@ img.ploading{background:linear-gradient(90deg,var(--chip) 25%,color-mix(in srgb,
 <div class="maptools">
  <button class="mbtn" id="bLoc" title="Ma position" aria-label="Ma position"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
  <button class="mbtn" id="bFit" title="Voir toute l'érablière" aria-label="Voir toute l'érablière"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+ <button class="mbtn" id="bDash" title="Tableau de bord plein écran" aria-label="Tableau de bord plein écran"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="12" y="3" width="9" height="11" rx="1.5"/><rect x="12" y="16" width="9" height="5" rx="1.5"/></svg></button>
 </div>
 <div class="gpsinfo" id="gpsinfo"></div>
 <div class="etool" id="etool"><button class="btn" data-draw="ligne">+ Ligne</button><button class="btn" data-draw="gps">+ Tracé GPS</button><button class="btn" data-draw="zone">+ Zone</button><button class="btn" data-draw="point">+ Installation</button><button class="btn pri" id="eDone">Terminer</button></div>
