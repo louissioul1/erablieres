@@ -40,7 +40,9 @@ const P = {
  route:"M6 19a2 2 0 1 0 0-.01M18 5a2 2 0 1 0 0-.01M6 17V9a4 4 0 0 1 4-4h4M18 7v8a4 4 0 0 1-4 4h-4",
  chart:"M4 20V10M10 20V4M16 20v-7M22 20H2",
  gear:"M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
- play:"M7 4l13 8-13 8z", stop:"M6 6h12v12H6z"};
+ play:"M7 4l13 8-13 8z", stop:"M6 6h12v12H6z",
+ gauge:"M12 14l4-4M3.5 17a9 9 0 1 1 17 0M12 14h.01",
+ map:"M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14", full:"M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"};
 const ico = (k,s=20)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${P[k]}"/></svg>`;
 
 // ---------- référentiels
@@ -88,7 +90,7 @@ function Fire(db,F){
 
 // ---------- état
 let store=null, auth=null, fbAuth=null, me={uid:"local",email:"",nom:"Moi"}, role="admin";
-let sectors=[{id:DEF,nom:"Montagne Noire",ord:0}], couche=[], heures=[], obs=[], prod=[], barils=[], transport=[], acts=[], cfg={};
+let lstate={}, membres=[], vac=[], passes=[], vsrc=[], sectors=[{id:DEF,nom:"Montagne Noire",ord:0}], couche=[], heures=[], obs=[], prod=[], barils=[], transport=[], acts=[], cfg={};
 const denied={};
 let sect=ls.get("gest_sect","*"), tab=ls.get("gest_tab","accueil"), ptab="journal", season=CUR, openDay=null, bFilt="", catSel=ls.get("gest_cat","bouillage");
 const isAd = ()=>role==="admin";
@@ -112,7 +114,7 @@ const chips = (name,opts,val)=>`<div class="row">${opts.map(([k,l,c])=>`<button 
 function pick(name,cb){$("#sheet").querySelectorAll(`[data-${name}]`).forEach(b=>b.onclick=()=>{$("#sheet").querySelectorAll(`[data-${name}]`).forEach(x=>x.setAttribute("aria-pressed",x===b));cb(b.dataset[name])})}
 
 // ---------- navigation
-const TABS = [["accueil","Accueil","home"],["punch","Punch","clock"],["production","Production","barrel"],["planif","Planification","route"],["stats","Statistiques","chart"],["reglages","Réglages","gear"]];
+const TABS = [["accueil","Accueil","home"],["carte","Carte","map"],["punch","Punch","clock"],["capteurs","Capteurs","gauge"],["production","Production","barrel"],["planif","Planification","route"],["stats","Statistiques","chart"],["reglages","Réglages","gear"]];
 function nav(){$("#nav").innerHTML=TABS.map(([k,l,i])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${ico(i)}<span>${l}</span></button>`).join("");
  $("#nav").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;ls.set("gest_tab",tab);nav();render();scrollTo(0,0)});
  $("#sectName").textContent=sectName(sect)}
@@ -122,8 +124,9 @@ $("#bTv").onclick=()=>startTv();
 
 let timerI=0;
 function render(){if(!store)return;clearInterval(timerI);if(document.body.classList.contains("tv"))return renderTv();
- const v=$("#view");v.innerHTML=({accueil:vAccueil,punch:vPunch,production:vProd,planif:vPlanif,stats:vStats,reglages:vReg}[tab]||vAccueil)();
- ({punch:bPunch,production:bProd,planif:bPlanif,reglages:bReg,accueil:bAccueil,stats:bStats}[tab]||(()=>{}))(v)}
+ document.body.classList.toggle("dash",tab==="carte");if(tab==="carte"){if(dMap&&$("#dmap"))return dashUpdate();return dashBuild()}if(dMap){dMap.remove();dMap=null}
+ const v=$("#view");v.innerHTML=({accueil:vAccueil,punch:vPunch,capteurs:vCapt,production:vProd,planif:vPlanif,stats:vStats,reglages:vReg}[tab]||vAccueil)();
+ ({punch:bPunch,capteurs:bCapt,production:bProd,planif:bPlanif,reglages:bReg,accueil:bAccueil,stats:bStats}[tab]||(()=>{}))(v)}
 const seasons = ()=>{const s=new Set([CUR,...heures.map(h=>h.season??seasonOf(h.date)),...prod.map(d=>d.season),...barils.map(b=>b.season)].filter(Boolean));return [...s].sort((a,b)=>b-a)};
 const seasonSel = ()=>`<select id="selSeason" style="width:auto;min-height:38px;padding:6px 10px">${seasons().map(s=>`<option value="${s}" ${s===season?"selected":""}>Saison ${s}</option>`).join("")}</select>`;
 const bindSeason = v=>{const s=v.querySelector("#selSeason");if(s)s.onchange=()=>{season=+s.value;render()}};
@@ -369,7 +372,7 @@ function L_map(el){const m=window.L.map(el,{zoomControl:true,attributionControl:
 
 // ---------- statistiques
 function vStats(){const H=heures.filter(h=>inSect(h)&&(h.season??seasonOf(h.date))===season&&!h.open);const O=obs.filter(o=>inSect(o)&&(o.season??seasonOf(o.at))===season);
- const tot=sum(H,h=>h.h),open=O.filter(o=>!TYPES[o.type]?.w&&o.status==="ouvert"),fixed=O.filter(o=>o.status==="repare"&&o.doneAt);
+ const tot=sum(H,h=>h.h),open=O.filter(o=>!TYPES[o.type]?.w&&o.status==="ouvert"),fixed=O.filter(o=>o.status==="regle"&&o.doneAt);
  const rep=fixed.length?sum(fixed,o=>(new Date(o.doneAt)-new Date(o.at))/86400000)/fixed.length:null;
  const byCat=CATS.map(c=>[c.l,sum(H.filter(h=>catOf(h).k===c.k),h=>h.h),c.c]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]);
  const byP={};H.forEach(h=>byP[h.byName||"—"]=(byP[h.byName||"—"]||0)+(+h.h||0));
@@ -384,11 +387,154 @@ function vStats(){const H=heures.filter(h=>inSect(h)&&(h.season??seasonOf(h.date
  ${isAd()?`<div class="card"><h2>Heures par personne</h2>${Object.keys(byP).length?hbars(Object.entries(byP).sort((a,b)=>b[1]-a[1]),hfmt):`<div class="empty">—</div>`}<div class="row" style="margin-top:10px"><button class="btn sm" id="bCsvH">Exporter les heures (CSV)</button></div></div>`:""}`}
 function bStats(v){bindSeason(v);const b=v.querySelector("#bCsvH");if(b)b.onclick=()=>{const H=heures.filter(h=>inSect(h)&&(h.season??seasonOf(h.date))===season);csv(`heures-${season}.csv`,[["Date","Personne","Catégorie","Érablière","Début","Fin","Heures","Note"],...H.map(h=>[h.date,h.byName,catOf(h).l,sectName(sectOf(h)),h.start?tlabel(h.start):"",h.end?tlabel(h.end):"",h.open?"en cours":h.h,h.note||""])])}}
 
+// ---------- capteurs de vide (passerelles erab-bridge)
+const VSTAT={alarme:{l:"Alarme",c:"#d01f1f",o:0},bas:{l:"Attention",c:"#e08a00",o:1},hors_ligne:{l:"Hors ligne",c:"#7d8a82",o:2},ok:{l:"OK",c:"#2fa85f",o:3}};
+const VTYP={vide:{l:"Vide",i:"🌀"},niveau:{l:"Niveau",i:"🛢️"},temperature:{l:"Température",i:"🌡️"},debit:{l:"Débit",i:"💧"},concentration:{l:"Brix",i:"🍁"},pression:{l:"Pression",i:"⏲️"},marche:{l:"Marche",i:"⚙️"},compteur:{l:"Compteur",i:"🔢"},autre:{l:"Mesure",i:"•"}};
+const vSt=v=>{const b=VSTAT[v.etat]||VSTAT.ok;if(v.etat==="alarme"||v.etat==="bas"){const t=v.type||"vide";const l=t==="vide"?(v.etat==="alarme"?"Fuite probable":"Vide bas"):t==="niveau"?(v.val>=50?(v.etat==="alarme"?"Presque plein":"Niveau haut"):(v.etat==="alarme"?"Presque vide":"Niveau bas")):b.l;return {...b,l}}return b};
+const vFmt=v=>v.etat==="hors_ligne"?"—":v.type==="marche"?(v.val?"En marche":"Arrêt"):(v.unit==="inHg"||!v.type||v.type==="vide")?nf(v.val,1)+'"':nf(v.val,v.type==="niveau"||v.type==="debit"?0:1)+(v.unit?" "+v.unit:"");
+const vSort=(a,b)=>(vSt(a).o-vSt(b).o)||String(a.type).localeCompare(String(b.type))||(a.val-b.val);
+let vtFilt="";
+let openPass=null;
+const pCfg=p=>{try{return p.config?(typeof p.config==="string"?JSON.parse(p.config):p.config):{}}catch(e){return {}}};
+function vCapt(){const all=vac.filter(inSect).sort(vSort),vs=all.filter(v=>!vtFilt||(v.type||"vide")===vtFilt),n=k=>all.filter(v=>v.etat===k).length,vides=all.filter(v=>(v.type||"vide")==="vide"&&v.etat!=="hors_ligne"),types=[...new Set(all.map(v=>v.type||"vide"))];
+ return `<div class="kpis"><div class="kpi"><b style="color:#d01f1f">${n("alarme")}</b><span>alarmes</span></div><div class="kpi"><b style="color:#e08a00">${n("bas")}</b><span>à surveiller</span></div><div class="kpi"><b>${n("hors_ligne")}</b><span>hors ligne</span></div><div class="kpi"><b>${vides.length?nf(vides.reduce((a,v)=>a+v.val,0)/vides.length,1)+'"':"—"}</b><span>vide moyen</span></div>${all.filter(v=>v.type==="niveau").map(v=>`<div class="kpi"><b style="color:${vSt(v).c}">${vFmt(v)}</b><span>🛢️ ${esc(v.nom)}</span><div style="height:6px;background:var(--chip);border-radius:3px;margin-top:6px"><div style="height:6px;border-radius:3px;background:${vSt(v).c};width:${Math.max(0,Math.min(100,v.unit==="%"?v.val:0))}%"></div></div></div>`).join("")}</div>
+ <div class="card"><h2>${ico("gauge",22)} Capteurs · ${esc(sectName(sect))}</h2>${types.length>1?`<div class="row" style="margin-bottom:10px">${chips("vt",[["","Tous"],...types.map(t=>[t,(VTYP[t]||VTYP.autre).i+" "+(VTYP[t]||VTYP.autre).l])],vtFilt)}</div>`:""}${vs.length?`<div class="tw"><table><thead><tr><th>Capteur</th><th>Type</th><th>Emplacement</th>${sect==="*"?"<th>Érablière</th>":""}<th class="n">Valeur</th><th>État</th><th class="n hide-m">Mesure</th></tr></thead><tbody>${vs.map(v=>`<tr><td><b>${esc(v.nom)}</b><div class="meta">${esc(v.source||"")}</div></td><td>${(VTYP[v.type]||VTYP.vide).i} ${(VTYP[v.type]||VTYP.vide).l}</td><td>${esc(v.ligne||v.emplacement||"—")}</td>${sect==="*"?`<td>${esc(sectName(sectOf(v)))}</td>`:""}<td class="n"><b>${vFmt(v)}</b></td><td><span class="badge" style="--c:${vSt(v).c}">${vSt(v).l}</span></td><td class="n hide-m meta">${ago(v.at)}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Aucun capteur pour l'instant. Branchez la clé USB erab-bridge sur le système de surveillance et tapez <b>sh install.sh</b> : le reste se fait tout seul.</div>`}</div>
+ <div class="card"><h2>Passerelles · ${passes.length}</h2>${passes.length?passes.sort((a,b)=>String(b.majAt).localeCompare(String(a.majAt))).map(p=>{const srcs=vsrc.filter(x=>x.passerelle===p.id),ok=srcs.length&&srcs.every(x=>x.ok),o=openPass===p.id;let det=[];try{det=JSON.parse(p.detection||"[]")}catch(e){}
+  return `<div class="day"><div class="dayh" data-pass="${esc(p.id)}"><b>${esc(p.hote||p.id.slice(0,8))}</b><span class="badge" style="--c:${ok?"#2fa85f":srcs.length?"#d01f1f":"#7d8a82"}">${ok?"En service":srcs.length?"Erreur de lecture":"En attente"}</span><span class="meta">${esc(sectName(p.sect||""))} · v${esc(p.version||"?")} · ${p.majAt?ago(p.majAt):""}</span><span class="sp"></span><span class="meta">${vac.filter(v=>v.passerelle===p.id).length} capteur(s)</span></div>
+  ${o?`<div class="dayb">${srcs.map(x=>`<p class="small">${x.ok?"✅":"⚠️"} <b>${esc(x.nom)}</b> (${esc(x.via||"")}) · ${x.n??"?"} capteurs · ${x.derniereLecture?ago(x.derniereLecture):""}${x.erreur?` · <span style="color:var(--maple)">${esc(x.erreur)}</span>`:""}</p>`).join("")}
+   ${isAd()?passEditor(p,det):""}
+   <details style="margin-top:10px"><summary class="small">Rapport de détection</summary><pre style="white-space:pre-wrap;font-size:12px;max-height:340px;overflow:auto;background:var(--chip);padding:10px;border-radius:8px">${esc(p.rapport||"—")}</pre></details></div>`:""}</div>`}).join(""):`<div class="empty">Aucune passerelle installée.</div>`}</div>`}
+function passEditor(p,det){const c=pCfg(p),caps=c.capteurs||{},mine=vac.filter(v=>v.passerelle===p.id).sort((a,b)=>String(a.nom).localeCompare(String(b.nom),"fr",{numeric:true}));const sS=c.sect||p.sect||sectors[0]?.id,sv=(c.seuils||{});
+ return `<h3 style="margin-top:12px">Réglages à distance</h3>
+ <div class="grid3"><div><label class="f">Érablière</label><select data-pc="sect">${sectors.map(s=>`<option value="${s.id}" ${s.id===sS?"selected":""}>${esc(s.nom)}</option>`).join("")}</select></div>
+ <div><label class="f">Vide bas sous (po Hg)</label><input type="number" step="0.5" data-pc="bas" value="${(sv.vide||{}).bas??sv.bas??22}"></div><div><label class="f">Fuite (alarme) sous (po Hg)</label><input type="number" step="0.5" data-pc="alarme" value="${(sv.vide||{}).alarme??sv.alarme??18}"></div>
+ <div><label class="f">Bassin : niveau haut à (%)</label><input type="number" data-pc="nmax" value="${(sv.niveau||{}).max??90}"></div><div><label class="f">Bassin : presque plein à (%)</label><input type="number" data-pc="namax" value="${(sv.niveau||{}).alarmeMax??97}"></div><div><label class="f">Bassin : niveau bas à (%)</label><input type="number" data-pc="nmin" value="${(sv.niveau||{}).min??""}" placeholder="aucun"></div></div>
+ <label class="f">Source utilisée</label><select data-pc="src"><option value="">Automatique (meilleure détection)</option>${det.map((d,i)=>`<option value="${i}" ${c.sources&&c.sources[0]&&JSON.stringify(c.sources[0].nom)===JSON.stringify(d.nom)?"selected":""}>${esc(d.via+" · "+d.nom+" · "+d.capteurs+" capteurs (score "+d.score+")")}</option>`).join("")}</select>
+ ${mine.length?`<label class="f">Capteurs : nom et emplacement sur la carte (bout d'une maître-ligne ou une installation)</label><div class="tw"><table><tbody>${mine.map(v=>{const m=caps[v.id]||{},se=m.sect||sS,ls_=linesOf(se),pts=feats(se).filter(f=>f.kind==="point"),cur=m.ligne?"L:"+m.ligne:m.emplacement?"P:"+m.emplacement:v.ligne?"L:"+v.ligne:v.emplacement?"P:"+v.emplacement:"";return `<tr><td class="meta">${(VTYP[v.type]||VTYP.vide).i} ${esc(v.id)}</td><td><input type="text" data-cn="${esc(v.id)}" value="${esc(m.nom||v.nom)}" style="min-height:36px;padding:4px 8px"></td><td><select data-cl="${esc(v.id)}" style="min-height:36px;padding:4px 8px"><option value="">—</option><optgroup label="Maîtres-lignes">${ls_.map(l=>`<option value="L:${esc(l.name)}" ${cur==="L:"+l.name?"selected":""}>${esc(l.name)}</option>`).join("")}</optgroup><optgroup label="Installations">${pts.map(f=>`<option value="P:${esc(f.name)}" ${cur==="P:"+f.name?"selected":""}>${esc(f.name)}</option>`).join("")}</optgroup></select></td></tr>`}).join("")}</tbody></table></div>`:""}
+ <div class="row" style="margin-top:10px"><button class="btn pri" data-psave="${esc(p.id)}">Envoyer à la passerelle</button><span class="small">Appliqué dans les 10 minutes.</span></div>`}
+function bCapt(v){v.querySelectorAll("[data-vt]").forEach(b=>b.onclick=()=>{vtFilt=b.dataset.vt;render()});v.querySelectorAll("[data-pass]").forEach(b=>b.onclick=()=>{openPass=openPass===b.dataset.pass?null:b.dataset.pass;render()});
+ v.querySelectorAll("[data-psave]").forEach(b=>b.onclick=async()=>{const p=passes.find(x=>x.id===b.dataset.psave),c=pCfg(p);let det=[];try{det=JSON.parse(p.detection||"[]")}catch(e){}
+  const q=k=>v.querySelector(`[data-pc="${k}"]`).value;c.sect=q("sect");const sv={...(c.seuils||{})};delete sv.bas;delete sv.alarme;
+  sv.vide={bas:+q("bas")||22,alarme:+q("alarme")||18};sv.niveau={max:+q("nmax")||90,alarmeMax:+q("namax")||97};if(q("nmin")!=="")sv.niveau.min=+q("nmin");c.seuils=sv;
+  const si=q("src");if(si==="")delete c.sources;else{const d={...det[+si]};delete d.score;delete d.capteurs;d.sect=c.sect;c.sources=[d]}
+  c.capteurs=c.capteurs||{};v.querySelectorAll("[data-cn]").forEach(i=>{const id=i.dataset.cn,l=v.querySelector(`[data-cl="${CSS.escape(id)}"]`).value;c.capteurs[id]={...(c.capteurs[id]||{}),nom:i.value.trim(),ligne:l.startsWith("L:")?l.slice(2):"",emplacement:l.startsWith("P:")?l.slice(2):"",sect:c.sect}});
+  c.auto=true;await store.upd("passerelles",p.id,{config:JSON.stringify(c),configAt:new Date().toISOString(),configBy:me.nom});toast("Envoyé : la passerelle l'appliquera d'ici 10 minutes")})}
+
+// ---------- tableau de bord carte (plein écran)
+const LSTAT={ok:{l:"OK",h:"#ffffff"},verif:{l:"À vérifier",h:"#ffc21a"},bris:{l:"Bris",h:"#ff3b22"},rep:{l:"En réparation",h:"#3d8bff"}};
+const isDone=o=>o.status==="regle"||o.status==="termine";
+const lst=id=>{const s=lstate[id];return s&&(s.season??seasonOf(s.at))===CUR?s:{}};
+let dMap=null,dG={},dBase=null,dSel=null,dPanel=ls.get("gest_dpanel","alertes"),dLay=ls.get("gest_dlay",{zones:1,lignes:1,obs:1,travaux:1,capteurs:1,pts:1}),dBaseK=ls.get("gest_dbase","sat"),dFlyNext=true;
+const BASES={sat:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}","Imagerie © Esri"],topo:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}","Topo © Esri"],plan:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","© OpenStreetMap"]};
+const openObs=()=>obs.filter(o=>!isDone(o)&&o.lat!=null&&(o.season??seasonOf(o.at))<=CUR);
+const vPos=v=>{if(v.lat!=null&&v.lng!=null)return [v.lat,v.lng];const fs=feats(sectOf(v));if(v.emplacement){const f=fs.find(x=>x.kind==="point"&&String(x.name).toLowerCase()===String(v.emplacement).toLowerCase());if(f){const c=dec(f.c)[0];return [c[1],c[0]]}}
+ if(v.ligne){const f=fs.find(x=>x.kind==="ligne"&&String(x.name).toLowerCase()===String(v.ligne).toLowerCase());if(f){const c=dec(f.c);return [c[c.length-1][1],c[c.length-1][0]]}}return null};
+function dashBuild(){const v=$("#view");
+ v.innerHTML=`<div class="dw"><aside class="dl" id="dl"></aside><div class="dc"><div id="dmap"></div><div class="dstats" id="dstats"></div>
+  <div class="dtools"><button class="dbtn" id="dFull" title="Plein écran">${ico("full",18)}</button><button class="dbtn" id="dFit" title="Recadrer">⤢</button></div></div><aside class="dr" id="dr"></aside></div>`;
+ dMap=window.L.map("dmap",{zoomControl:true,attributionControl:true,preferCanvas:false});dSetBase();
+ dG={zones:window.L.layerGroup().addTo(dMap),lignes:window.L.layerGroup().addTo(dMap),pts:window.L.layerGroup().addTo(dMap),obs:window.L.layerGroup().addTo(dMap),travaux:window.L.layerGroup().addTo(dMap),capteurs:window.L.layerGroup().addTo(dMap)};
+ $("#dFull").onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(e){}};
+ $("#dFit").onclick=()=>{dFlyNext=true;dFit()};
+ dMap.on("click",()=>{if(dSel){dSel=null;dRight()}});
+ dFit();dashUpdate();setTimeout(()=>dMap.invalidateSize(),200)}
+function dSetBase(){if(dBase)dMap.removeLayer(dBase);const b=BASES[dBaseK]||BASES.sat;dBase=window.L.tileLayer(b[0],{maxZoom:20,maxNativeZoom:19,attribution:b[1]}).addTo(dMap)}
+function dFit(){const pts=(sect==="*"?couche:couche.filter(f=>sectOf(f)===sect)).flatMap(f=>dec(f.c).map(p=>[p[1],p[0]]));if(!pts.length){dMap.setView(centerOf(sect==="*"?(sectors[0]||{}).id:sect),14);return}
+ const b=window.L.latLngBounds(pts);dFlyNext&&dMap._loaded?dMap.flyToBounds(b,{padding:[30,30],duration:1}):dMap.fitBounds(b,{padding:[30,30]});dFlyNext=false}
+function dashUpdate(){if(!dMap)return;Object.values(dG).forEach(g=>g.clearLayers());const L=window.L,lab=dMap.getZoom()>=15;
+ couche.forEach(f=>{const c=dec(f.c).map(p=>[p[1],p[0]]),dim=sect!=="*"&&sectOf(f)!==sect;if(!c.length)return;
+  if(f.kind==="zone"&&dLay.zones)L.polygon(c,{color:f.color||"#3468eb",weight:2,fillOpacity:dim?.03:.12,opacity:dim?.4:1}).bindTooltip(esc(f.name||""),{sticky:true}).addTo(dG.zones);
+  else if(f.kind==="ligne"&&dLay.lignes){const st=lst(f.id).status||"ok",n=openObs().filter(o=>o.line===f.id).length;
+   L.polyline(c,{color:"#000",weight:7,opacity:dim?.15:.4,interactive:false}).addTo(dG.lignes);
+   L.polyline(c,{color:LSTAT[st].h,weight:st==="ok"?3:5,opacity:dim?.4:1,dashArray:st==="verif"?"8 6":null}).bindTooltip(`${esc(f.name||"Ligne")} · ${LSTAT[st].l}${n?" · "+n+" signalement(s)":""}`,{sticky:true}).on("click",e=>{window.L.DomEvent.stop(e);dSel={k:"ligne",id:f.id};dPanel="detail";dRight()}).addTo(dG.lignes)}
+  else if(f.kind==="point"&&dLay.pts)L.circleMarker(c[0],{radius:6,color:"#fff",weight:2,fillColor:f.color||"#2fa85f",fillOpacity:1}).bindTooltip(esc(f.name||""),{permanent:lab&&!dim,direction:"right",className:"lbl"}).addTo(dG.pts)});
+ openObs().forEach(o=>{const t=TYPES[o.type]||TYPES.autre,w=!!t.w;if(w?!dLay.travaux:!dLay.obs)return;const pr=prOf(o);
+  if(pr==="urgent")L.circleMarker([o.lat,o.lng],{radius:17,color:"#d01f1f",weight:3,fill:false,interactive:false,className:"pulse"}).addTo(dG.obs);
+  const m=w?L.marker([o.lat,o.lng],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div style="width:16px;height:16px;margin:3px;transform:rotate(45deg);background:${t.c};border:3px solid #fff;box-shadow:0 1px 4px #0008"></div>`})})
+   :L.circleMarker([o.lat,o.lng],{radius:pr==="urgent"||pr==="haute"?11:9,color:"#fff",weight:3,fillColor:t.c,fillOpacity:1});
+  m.bindTooltip(`${esc(t.l)}${asgOf(o).length?" → "+esc(asgOf(o).map(a=>a.nom).join(", ")):""}`,{direction:"top"}).on("click",e=>{window.L.DomEvent.stop(e);dSel={k:"obs",id:o.id};dPanel="detail";dRight()}).addTo(w?dG.travaux:dG.obs)});
+ if(dLay.capteurs){const pile={};vac.forEach(v=>{const p=vPos(v);if(!p)return;const k=p[0].toFixed(5)+p[1].toFixed(5),i=pile[k]=(pile[k]??-1)+1,st=vSt(v);
+  L.marker(p,{icon:L.divIcon({className:"",iconSize:[80,24],iconAnchor:[40,12-i*27],html:`<div class="vpill${v.etat==="alarme"?" valarm":""}" style="--c:${st.c}">${(VTYP[v.type]||VTYP.vide).i} ${vFmt(v)}</div>`}),zIndexOffset:400}).bindTooltip(esc(v.nom)+" · "+st.l,{direction:"top"}).on("click",e=>{window.L.DomEvent.stop(e);dSel={k:"capteur",id:v.id};dPanel="detail";dRight()}).addTo(dG.capteurs)})}
+ if(dFlyNext)dFit();dLeft();dRight();dStats()}
+function dStats(){const oo=openObs().filter(inSect),br=couche.filter(f=>f.kind==="ligne"&&inSect(f)&&["bris","rep"].includes(lst(f.id).status)).length,ca=vac.filter(v=>inSect(v)&&["alarme","bas"].includes(v.etat)).length,now=heures.filter(h=>h.open&&inSect(h)).length;
+ $("#dstats").innerHTML=`<span><b style="color:#ff6b5a">${oo.filter(o=>!TYPES[o.type]?.w).length}</b> signalements</span><span><b style="color:#ffc21a">${br}</b> lignes en bris</span><span><b style="color:#ff6b5a">${ca}</b> capteurs en alerte</span><span><b style="color:#7be0a0">${now}</b> au travail</span><span class="meta" style="color:#cfe">${new Date().toLocaleTimeString("fr-CA",{hour:"2-digit",minute:"2-digit"})}</span>`}
+function dLeft(){const n=id=>openObs().filter(o=>!TYPES[o.type]?.w&&(id==="*"||sectOf(o)===id)).length;
+ $("#dl").innerHTML=`<div class="row" style="margin-bottom:12px"><div class="logo" style="width:36px;height:36px"><svg width="24" height="25"><use href="#leaf"/></svg></div><b style="font:700 20px 'Barlow Condensed';flex:1">Carte de gestion</b><button class="btn sm" id="dBack" title="Quitter">✕</button></div>
+ <div class="dh">Érablières</div>${[["*","Toutes"],...sectors.map(x=>[x.id,x.nom])].map(([k,l])=>`<button class="dsec" data-ds="${esc(k)}" aria-pressed="${sect===k}"><span>${esc(l)}</span>${n(k)?`<b>${n(k)}</b>`:""}</button>`).join("")}
+ <div class="dh">Couches</div>${[["zones","Zones"],["lignes","Maîtres-lignes"],["pts","Installations"],["obs","Signalements"],["travaux","Travaux"],["capteurs","Capteurs"]].map(([k,l])=>`<label class="dchk"><input type="checkbox" data-dl="${k}" ${dLay[k]?"checked":""}> ${l}</label>`).join("")}
+ <div class="dh">Fond de carte</div><div class="row" style="gap:4px">${[["sat","Satellite"],["topo","Topo"],["plan","Plan"]].map(([k,l])=>`<button class="chip" data-db="${k}" aria-pressed="${dBaseK===k}">${l}</button>`).join("")}</div>
+ <div class="dh">Légende</div><div class="dleg">${Object.values(LSTAT).map(x=>`<div><i style="background:${x.h};outline:1px solid #0006"></i>Ligne ${x.l.toLowerCase()}</div>`).join("")}${Object.entries(TYPES).filter(([k,t])=>!t.w).map(([k,t])=>`<div><i style="background:${t.c};border-radius:50%;width:10px;height:10px"></i>${t.l}</div>`).join("")}<div><i style="border:3px solid #d01f1f;border-radius:50%;width:12px;height:12px;background:none"></i>Urgent</div><div><i style="background:#00b3a4;transform:rotate(45deg);width:10px;height:10px"></i>Travaux</div></div>`;
+ $("#dBack").onclick=()=>{try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}tab="accueil";ls.set("gest_tab",tab);nav();render()};
+ $("#dl").querySelectorAll("[data-ds]").forEach(b=>b.onclick=()=>{sect=b.dataset.ds;ls.set("gest_sect",sect);dFlyNext=true;nav();dashUpdate()});
+ $("#dl").querySelectorAll("[data-dl]").forEach(c=>c.onchange=()=>{dLay[c.dataset.dl]=c.checked?1:0;ls.set("gest_dlay",dLay);dashUpdate()});
+ $("#dl").querySelectorAll("[data-db]").forEach(b=>b.onclick=()=>{dBaseK=b.dataset.db;ls.set("gest_dbase",dBaseK);dSetBase();dLeft()})}
+function dGo(ll,z=17){dMap.flyTo(ll,Math.max(dMap.getZoom(),z),{duration:.8})}
+function dRight(){const r=$("#dr");if(!r)return;const tabs=[["alertes","Alertes"],["obs","Signalements"],["capteurs","Capteurs"],["equipe","Équipe"]];
+ const P=dPanel==="detail"&&dSel?dDetail():({alertes:dAlertes,obs:dObsList,capteurs:dCaptList,equipe:dEquipe}[dPanel]||dAlertes)();
+ r.innerHTML=`<div class="seg" style="margin-bottom:10px">${tabs.map(([k,l])=>`<button data-dp="${k}" aria-pressed="${dPanel===k}">${l}</button>`).join("")}</div><div id="drb">${P}</div>`;
+ r.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>{dPanel=b.dataset.dp;ls.set("gest_dpanel",dPanel);dSel=null;dRight()});
+ r.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{const [k,id]=b.dataset.go.split("|");dSel={k,id};const o=k==="obs"?obs.find(x=>x.id===id):k==="capteur"?vac.find(x=>x.id===id):null;
+  if(k==="obs"&&o)dGo([o.lat,o.lng]);else if(k==="capteur"&&o){const p=vPos(o);if(p)dGo(p)}else if(k==="ligne"){const f=couche.find(x=>x.id===id);if(f)dMap.flyToBounds(dec(f.c).map(p=>[p[1],p[0]]),{padding:[60,60],duration:.8})}
+  dPanel="detail";dRight()});
+ dBindDetail()}
+const dItem=(go,col,title,sub,right="")=>`<div class="ditem" data-go="${go}"><i style="background:${col}"></i><div style="flex:1;min-width:0"><b>${title}</b><div class="meta">${sub}</div></div>${right}</div>`;
+function dAlertes(){const oo=openObs().filter(inSect).filter(o=>!TYPES[o.type]?.w&&["urgent","haute"].includes(prOf(o))).sort(byPrio),ca=vac.filter(v=>inSect(v)&&["alarme","bas"].includes(v.etat)).sort(vSort),
+ lb=couche.filter(f=>f.kind==="ligne"&&inSect(f)&&["bris","rep","verif"].includes(lst(f.id).status)),old=openObs().filter(inSect).filter(o=>!TYPES[o.type]?.w&&!asgOf(o).length&&Date.now()-new Date(o.at)>86400000);
+ const sec=(t,a)=>a.length?`<div class="dh">${t} · ${a.length}</div>${a.join("")}`:"";
+ const html=sec("Signalements urgents",oo.map(o=>dItem("obs|"+o.id,PRIOS[prOf(o)].c,esc((TYPES[o.type]||TYPES.autre).l),`${PRIOS[prOf(o)].l} · ${esc(sectName(sectOf(o)))} · ${ago(o.at)}${asgOf(o).length?" · → "+esc(asgOf(o).map(a=>a.nom).join(", ")):""}`)))
+  +sec("Capteurs",ca.map(v=>dItem("capteur|"+v.id,vSt(v).c,esc(v.nom),`${vSt(v).l} · ${esc(v.ligne||v.emplacement||sectName(sectOf(v)))}`,`<b>${vFmt(v)}</b>`)))
+  +sec("Maîtres-lignes",lb.map(f=>dItem("ligne|"+f.id,LSTAT[lst(f.id).status].h,esc(f.name||"Ligne"),`${LSTAT[lst(f.id).status].l} · ${esc(sectName(sectOf(f)))}`)))
+  +sec("Non assignés depuis plus de 24 h",old.map(o=>dItem("obs|"+o.id,(TYPES[o.type]||TYPES.autre).c,esc((TYPES[o.type]||TYPES.autre).l),`${esc(sectName(sectOf(o)))} · ${ago(o.at)}`)));
+ return html||`<div class="empty">Aucune alerte. Tout est sous contrôle.</div>`}
+function dObsList(){const oo=openObs().filter(inSect).sort(byPrio);return oo.length?oo.map(o=>{const t=TYPES[o.type]||TYPES.autre;return dItem("obs|"+o.id,t.c,esc(t.l)+(prOf(o)!=="normale"?` <span class="badge" style="--c:${PRIOS[prOf(o)].c}">${PRIOS[prOf(o)].l}</span>`:""),`${esc(sectName(sectOf(o)))} · ${ago(o.at)}${asgOf(o).length?" · → "+esc(asgOf(o).map(a=>a.nom).join(", ")):""}${o.note?" · "+esc(String(o.note).slice(0,50)):""}`)}).join(""):`<div class="empty">Aucun signalement ouvert.</div>`}
+function dCaptList(){const vs=vac.filter(inSect).sort(vSort);return vs.length?vs.map(v=>dItem("capteur|"+v.id,vSt(v).c,esc(v.nom),`${(VTYP[v.type]||VTYP.vide).l} · ${vSt(v).l} · ${ago(v.at)}`,`<b>${vFmt(v)}</b>`)).join(""):`<div class="empty">Aucun capteur.</div>`}
+function dEquipe(){const now=heures.filter(h=>h.open&&inSect(h)),as={};openObs().forEach(o=>asgOf(o).forEach(a=>{(as[a.nom]=as[a.nom]||[]).push(o)}));
+ return `<div class="dh">Au travail · ${now.length}</div>${now.map(h=>`<div class="ditem"><i style="background:${catOf(h).c}"></i><div style="flex:1"><b>${esc(h.byName)}</b><div class="meta">${esc(catOf(h).l)} · ${esc(sectName(sectOf(h)))} · depuis ${tlabel(h.start)}</div></div></div>`).join("")||`<div class="small">Personne de punché.</div>`}
+ <div class="dh">Tâches assignées</div>${Object.keys(as).length?Object.entries(as).sort((a,b)=>b[1].length-a[1].length).map(([n,l])=>`<div class="ditem" style="cursor:default"><i style="background:#7a4fd6"></i><div style="flex:1"><b>${esc(n)}</b><div class="meta">${l.length} tâche(s) ouverte(s)${l.some(o=>prOf(o)==="urgent")?" · dont urgente":""}</div></div></div>`).join(""):`<div class="small">Aucune tâche assignée.</div>`}`}
+function dDetail(){const s=dSel;
+ if(s.k==="obs"){const o=obs.find(x=>x.id===s.id);if(!o)return `<div class="empty">Introuvable.</div>`;const t=TYPES[o.type]||TYPES.autre,ln=couche.find(f=>f.id===o.line),pr=prOf(o),as=asgOf(o);
+  return `<button class="btn sm" data-dp2="obs">← Liste</button><h3 style="margin:10px 0 4px;display:flex;gap:8px;align-items:center"><span class="badge" style="--c:${t.c};font-size:15px">${esc(t.l)}</span></h3>
+  <div class="meta">${esc(sectName(sectOf(o)))}${ln?" · "+esc(ln.name):""} · ${esc(o.byName||"")} · ${ago(o.at)}</div>${o.note?`<p>${esc(o.note)}</p>`:""}
+  <div class="dphotos" id="dPh">${(o.photos||[]).map(id=>`<img data-pid="${esc(id)}" alt="">`).join("")}</div>
+  <div class="small"><a href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank" rel="noopener">Itinéraire Google Maps</a> · ${o.lat.toFixed(5)}, ${o.lng.toFixed(5)}</div>
+  ${isAd()?`<div class="dh">Priorité</div><div class="row" style="gap:4px">${Object.entries(PRIOS).map(([k,v])=>`<button class="chip" data-dpr="${k}" aria-pressed="${k===pr}" style="${k===pr?`background:${v.c};border-color:${v.c};color:#fff`:""}">${v.l}</button>`).join("")}</div>
+  <div class="dh">Assigner à</div><div class="row" style="gap:4px">${membres.map(m=>`<button class="chip" data-das="${esc(m.id)}" data-nm="${esc(m.nom||m.id.split("@")[0])}" aria-pressed="${as.some(a=>a.email===m.id)}">${esc(m.nom||m.id.split("@")[0])}</button>`).join("")||`<span class="small">—</span>`}</div>
+  <div class="row" style="margin-top:8px"><button class="btn pri sm" id="dAsSave">Enregistrer et avertir</button></div>`:(pr!=="normale"||as.length?`<p class="small">Priorité ${PRIOS[pr].l.toLowerCase()}${as.length?" · assigné à "+esc(as.map(a=>a.nom).join(", ")):""}</p>`:"")}
+  <div class="dh">Réparation</div><textarea id="dRep" placeholder="Ce qui a été fait"></textarea><div class="row" style="margin-top:8px"><button class="btn g sm" id="dRepOk">Marquer réglé</button></div>`}
+ if(s.k==="capteur"){const v=vac.find(x=>x.id===s.id);if(!v)return `<div class="empty">Introuvable.</div>`;const st=vSt(v);
+  return `<button class="btn sm" data-dp2="capteurs">← Liste</button><h3 style="margin:10px 0 2px">${esc(v.nom)}</h3><div class="meta">${(VTYP[v.type]||VTYP.vide).l} · ${esc(v.ligne||v.emplacement||"")} · ${esc(sectName(sectOf(v)))}</div>
+  <div style="font:700 46px/1.1 'Barlow Condensed';margin:10px 0;color:${st.c}">${vFmt(v)}</div><span class="badge" style="--c:${st.c}">${st.l}</span><p class="small">Mesure ${ago(v.at)} · source ${esc(v.source||"")}${v.bat!=null?" · batterie "+esc(v.bat):""}</p>`}
+ if(s.k==="ligne"){const f=couche.find(x=>x.id===s.id);if(!f)return `<div class="empty">Introuvable.</div>`;const st=lst(f.id).status||"ok",c=dec(f.c);let len=0;for(let i=1;i<c.length;i++)len+=hav(c[i-1],c[i]);
+  const oo=openObs().filter(o=>o.line===f.id),vs=vac.filter(v=>String(v.ligne).toLowerCase()===String(f.name).toLowerCase()&&sectOf(v)===sectOf(f));
+  return `<button class="btn sm" data-dp2="alertes">← Retour</button><h3 style="margin:10px 0 2px">${esc(f.name||"Ligne")}</h3><div class="meta">${esc(sectName(sectOf(f)))} · ${nf(len)} m${f.ent?" · "+nf(f.ent)+" entailles":""}${f.dia?" · "+esc(f.dia):""}</div>
+  <div class="dh">État de la ligne</div><div class="row" style="gap:4px">${Object.entries(LSTAT).map(([k,x])=>`<button class="chip" data-dls="${k}" aria-pressed="${k===st}">${x.l}</button>`).join("")}</div>
+  ${vs.length?`<div class="dh">Capteurs</div>${vs.map(v=>dItem("capteur|"+v.id,vSt(v).c,esc(v.nom),vSt(v).l,`<b>${vFmt(v)}</b>`)).join("")}`:""}
+  <div class="dh">Signalements ouverts · ${oo.length}</div>${oo.map(o=>dItem("obs|"+o.id,(TYPES[o.type]||TYPES.autre).c,esc((TYPES[o.type]||TYPES.autre).l),ago(o.at))).join("")||`<div class="small">Aucun.</div>`}`}
+ return ""}
+async function dPhoto(id){try{const d=await store.get("photos",id);return d&&d.d}catch(e){return null}}
+function dBindDetail(){const r=$("#dr");if(!r||!dSel)return;
+ r.querySelectorAll("[data-dp2]").forEach(b=>b.onclick=()=>{dPanel=b.dataset.dp2;dSel=null;dRight()});
+ r.querySelectorAll("img[data-pid]").forEach(async im=>{const d=await dPhoto(im.dataset.pid);if(d){im.src=d;im.onclick=()=>window.open().document.write(`<img src="${d}" style="max-width:100%">`)}});
+ const o=dSel.k==="obs"?obs.find(x=>x.id===dSel.id):null;
+ if(o){let pr=prOf(o),sel=asgOf(o).map(a=>({...a}));
+  r.querySelectorAll("[data-dpr]").forEach(b=>b.onclick=()=>{pr=b.dataset.dpr;r.querySelectorAll("[data-dpr]").forEach(x=>{const on=x===b,c=PRIOS[x.dataset.dpr].c;x.setAttribute("aria-pressed",on);x.style.cssText=on?`background:${c};border-color:${c};color:#fff`:""})});
+  r.querySelectorAll("[data-das]").forEach(b=>b.onclick=()=>{const e=b.dataset.das,i=sel.findIndex(a=>a.email===e);if(i>=0)sel.splice(i,1);else sel.push({email:e,nom:b.dataset.nm});b.setAttribute("aria-pressed",i<0)});
+  const sv=r.querySelector("#dAsSave");if(sv)sv.onclick=async()=>{const before=asgOf(o).map(a=>a.email),added=sel.filter(a=>!before.includes(a.email)),t=TYPES[o.type]||TYPES.autre;
+   await store.upd("obs",o.id,{prio:pr,assign:sel,assignBy:me.nom,assignAt:new Date().toISOString()});
+   if(added.length)await store.set("activite",nid("a"),{kind:"assign",text:`📌 ${added.map(a=>a.nom).join(", ")} : ${t.l} (priorité ${PRIOS[pr].l.toLowerCase()})`,sect:sectOf(o),by:me.uid,byName:me.nom,at:new Date().toISOString(),season:CUR,obs:o.id});
+   toast(added.length?"Assigné. L'équipe est avertie.":"Enregistré.")};
+  const rp=r.querySelector("#dRepOk");if(rp)rp.onclick=async()=>{const note=r.querySelector("#dRep").value.trim(),t=TYPES[o.type]||TYPES.autre;
+   await store.upd("obs",o.id,{status:"regle",doneAt:new Date().toISOString(),doneBy:me.uid,doneByName:me.nom,doneSeason:CUR,repairNote:note});
+   await store.set("activite",nid("a"),{kind:"reparation",text:"Réparé : "+t.l+(note?" — « "+note.slice(0,80)+" »":""),sect:sectOf(o),by:me.uid,byName:me.nom,at:new Date().toISOString(),season:CUR,obs:o.id});
+   toast("Marqué réglé");dSel=null;dPanel="obs";dRight()}}
+ if(dSel.k==="ligne")r.querySelectorAll("[data-dls]").forEach(b=>b.onclick=async()=>{const id=dSel.id,cur=lstate[id]||{};const {id:_,...rest}=cur;
+  await store.set("lignes",id,{...rest,status:b.dataset.dls,season:CUR,at:new Date().toISOString(),by:me.uid,byName:me.nom});toast("État de la ligne mis à jour")})}
+
 // ---------- accueil
 let metNow=null,metAt=0;
 function vAccueil(){const td=today(),bs=barils.filter(b=>inSect(b)&&b.date===td),sb=barils.filter(b=>inSect(b)&&b.season===CUR),tr=transport.filter(t=>inSect(t)&&t.date===td);
  const now=heures.filter(h=>h.open&&inSect(h)),open=obs.filter(o=>inSect(o)&&!TYPES[o.type]?.w&&o.status==="ouvert").sort(byPrio),op=openPunch(),mine=open.filter(o=>asgOf(o).some(a=>a.email===me.email));
- return `<div class="kpis"><div class="kpi"><b>${nf(sum(bs,b=>b.poids))}</b><span>lbs aujourd'hui</span><i>${bs.length} baril(s)</i></div><div class="kpi"><b>${nf(sum(sb,b=>b.poids))}</b><span>lbs saison ${CUR}</span><i>${sb.length} barils</i></div><div class="kpi"><b>${nf(sum(tr,t=>t.litres))}</b><span>litres de sève aujourd'hui</span></div><div class="kpi"><b style="color:var(--maple)">${open.length}</b><span>bris ouverts</span></div><div class="kpi" id="metK"><b>${metNow?nf(metNow.t,1)+"°":"…"}</b><span>${metNow?esc(metNow.ciel)+" · "+metNow.hpa+" hPa":"météo"}</span><i>${metNow?"min "+nf(metNow.tmin,0)+"° / max "+nf(metNow.tmax,0)+"°":""}</i></div></div>
+ return `<div class="kpis"><div class="kpi"><b>${nf(sum(bs,b=>b.poids))}</b><span>lbs aujourd'hui</span><i>${bs.length} baril(s)</i></div><div class="kpi"><b>${nf(sum(sb,b=>b.poids))}</b><span>lbs saison ${CUR}</span><i>${sb.length} barils</i></div><div class="kpi"><b>${nf(sum(tr,t=>t.litres))}</b><span>litres de sève aujourd'hui</span></div><div class="kpi"><b style="color:var(--maple)">${open.length}</b><span>bris ouverts</span></div>${vac.length?`<div class="kpi"><b style="color:#d01f1f">${vac.filter(x=>inSect(x)&&["alarme","bas"].includes(x.etat)).length}</b><span>capteurs en alerte</span><i>${vac.filter(inSect).length} capteurs</i></div>`:""}<div class="kpi" id="metK"><b>${metNow?nf(metNow.t,1)+"°":"…"}</b><span>${metNow?esc(metNow.ciel)+" · "+metNow.hpa+" hPa":"météo"}</span><i>${metNow?"min "+nf(metNow.tmin,0)+"° / max "+nf(metNow.tmax,0)+"°":""}</i></div></div>
  <div class="grid2"><div class="card"><h2>${ico("clock",22)} Punch</h2>${op?`<p>Vous êtes punché : <b>${esc(catOf(op).l)}</b> depuis ${tlabel(op.start)}.</p>`:`<p class="small">Vous n'êtes pas punché.</p>`}<button class="btn ${op?"red":"g"}" data-go="punch">${op?"Punch sortie":"Punch entrée"}</button>
    <h3 style="margin-top:14px">En ce moment</h3>${now.length?now.map(h=>`<div class="who"><span class="dot"></span><div style="flex:1"><b>${esc(h.byName)}</b> <span class="meta">${esc(catOf(h).l)}</span></div><span class="meta">${tlabel(h.start)}</span></div>`).join(""):`<div class="small">Personne.</div>`}</div>
   <div class="card"><h2>Bris ouverts</h2>${open.length?`<table><tbody>${open.slice(0,8).map(o=>`<tr><td><span class="badge" style="--c:${TYPES[o.type]?.c||"#777"}">${esc(TYPES[o.type]?.l||o.type)}</span></td><td>${prOf(o)!=="normale"?`<span class="badge" style="--c:${PRIOS[prOf(o)].c}">${PRIOS[prOf(o)].l}</span>`:""} <span class="meta">${esc(asgOf(o).map(a=>a.nom).join(", ")||sectName(sectOf(o)))}</span></td><td class="n meta">${ago(o.at)}</td></tr>`).join("")}</tbody></table>${mine.length?`<p class="small" style="color:#7a4fd6"><b>${mine.length}</b> assigné(s) à vous.</p>`:""}`:`<div class="empty">Aucun bris ouvert.</div>`}<a class="btn sm" href="../" style="display:inline-block;margin-top:10px;text-decoration:none">Ouvrir la carte terrain</a></div></div>
@@ -409,7 +555,7 @@ function renderTv(){if(!document.body.classList.contains("tv"))return;const td=t
  <div class="tvg">
   <div class="tvt"><span>Sirop aujourd'hui</span><b>${nf(sum(bs,b=>b.poids))}<small> lbs</small></b><span>${bs.length} baril(s)</span></div>
   <div class="tvt"><span>Saison ${CUR}</span><b>${nf(sum(sb,b=>b.poids))}<small> lbs</small></b><span>${sb.length} barils · ${tapsOf(sect)?nf(sum(sb,b=>b.poids)/tapsOf(sect),2)+" lbs/entaille":""}</span></div>
-  <div class="tvt"><span>Sève reçue aujourd'hui</span><b>${nf(sum(tr,x=>x.litres))}<small> L</small></b><span>${tr.length} voyage(s)</span></div>
+  ${vac.filter(inSect).length?(()=>{const vs=vac.filter(inSect).sort(vSort),al=vs.filter(x=>["alarme","bas"].includes(x.etat));return `<div class="tvt"><span>Capteurs · ${vs.length}</span><b style="color:${al.length?"#ff6b5a":"#7be0a0"}">${al.length}<small> en alerte</small></b><span>${al.slice(0,3).map(x=>esc(x.nom)+" "+vFmt(x)).join(" · ")||"Tout est OK"}</span></div>`})():`<div class="tvt"><span>Sève reçue aujourd'hui</span><b>${nf(sum(tr,x=>x.litres))}<small> L</small></b><span>${tr.length} voyage(s)</span></div>`}
   <div class="tvt"><span>Météo</span><b>${tvMet?nf(tvMet.t,1)+"°":"—"}</b><span>${tvMet?esc(tvMet.ciel)+" · "+tvMet.hpa+" hPa · vent "+tvMet.vent+" km/h":""}</span></div>
   <div class="tvt w2"><span>En ce moment · ${now.length} au travail</span><ul>${now.slice(0,6).map(h=>`<li><b style="font:inherit;flex:1">${esc(h.byName)}</b><span style="font-size:inherit;text-transform:none">${esc(catOf(h).l)} · depuis ${tlabel(h.start)}</span></li>`).join("")||"<li>Personne de punché</li>"}</ul></div>
   <div class="tvt w2"><span>Bris ouverts · ${open.length}</span><ul>${open.slice(0,6).map(o=>`<li><span style="font-size:inherit;text-transform:none;color:${TYPES[o.type]?.c};flex:1">${esc(TYPES[o.type]?.l||o.type)}</span><span style="font-size:inherit;text-transform:none">${prOf(o)==="urgent"?"🚨 ":""}${esc(asgOf(o).map(a=>a.nom).join(", ")||sectName(sectOf(o)))} · ${ago(o.at)}</span></li>`).join("")||"<li>Aucun</li>"}</ul></div>
@@ -451,10 +597,15 @@ async function enter(u){if(entered)return;const email=u.email.toLowerCase();me={
  role=m.role==="admin"?"admin":"membre";if(m.nom)me.nom=m.nom;entered=true;hideGate();startData()}
 function startData(){
  store.sub("secteurs",l=>{if(l.length)sectors=l.sort((a,b)=>(a.ord??0)-(b.ord??0));if(sect!=="*"&&!sectors.find(s=>s.id===sect))sect="*";nav();render()});
- store.sub("couche",l=>{couche=l;if(tab==="planif"||tab==="production")render()});
- store.sub("heures",l=>{heures=l;if(["punch","accueil","stats","production"].includes(tab)||document.body.classList.contains("tv"))render()});
- store.sub("obs",l=>{obs=l;if(["accueil","stats"].includes(tab)||document.body.classList.contains("tv"))render()});
+ store.sub("couche",l=>{couche=l;if(["planif","production","carte"].includes(tab))render()});
+ store.sub("heures",l=>{heures=l;if(["punch","accueil","stats","production","carte"].includes(tab)||document.body.classList.contains("tv"))render()});
+ store.sub("obs",l=>{obs=l;if(["accueil","stats","carte"].includes(tab)||document.body.classList.contains("tv"))render()});
+ store.sub("lignes",l=>{lstate=Object.fromEntries(l.map(d=>[d.id,d]));if(tab==="carte")render()});
+ if(isAd())store.sub("membres",l=>{membres=l;if(tab==="carte")render()});
  store.sub("prod",l=>{prod=l;render()});store.sub("barils",l=>{barils=l;render()});store.sub("transport",l=>{transport=l;render()});
+ store.sub("capteurs",l=>{vac=l;if(["capteurs","accueil","carte"].includes(tab)||document.body.classList.contains("tv"))render()});
+ store.sub("passerelles",l=>{passes=l;if(tab==="capteurs")render()});
+ store.sub("capteurs_sources",l=>{vsrc=l;if(tab==="capteurs")render()});
  store.sub("config",l=>{cfg=Object.fromEntries(l.map(d=>[d.id,d]));if(["planif","reglages"].includes(tab))render()});
  store.sub("activite",l=>{acts=l.sort((a,b)=>String(b.at).localeCompare(String(a.at)));if(tab==="accueil"||document.body.classList.contains("tv"))render()},{order:"at",lim:30});
  nav();render();if(new URLSearchParams(location.search).get("tv"))startTv()}
