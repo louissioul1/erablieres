@@ -137,16 +137,17 @@ function setBase(k){if(!BASES[k])k="hyb";baseKey=k;ls.set("erab_base",k);if(base
  document.querySelectorAll(".bases").forEach(el=>el.innerHTML=Object.entries(BASES).map(([kk,v])=>`<button class="chip" data-base="${kk}" aria-pressed="${kk===k}">${v.l}</button>`).join(""));
  document.querySelectorAll("[data-base]").forEach(x=>x.onclick=()=>setBase(x.dataset.base))}
 setBase(baseKey);
-const gZones=L.layerGroup().addTo(map), gLines=L.layerGroup().addTo(map), gPts=L.layerGroup().addTo(map), gObs=L.layerGroup().addTo(map), gVac=L.layerGroup().addTo(map), gTmp=L.layerGroup().addTo(map);
+let potOn=ls.get("erab_pot",true);const gPot=L.layerGroup().addTo(map),gZones=L.layerGroup().addTo(map), gLines=L.layerGroup().addTo(map), gPts=L.layerGroup().addTo(map), gObs=L.layerGroup().addTo(map), gVac=L.layerGroup().addTo(map), gTmp=L.layerGroup().addTo(map);
 map.createPane("me").style.zIndex=650;const meR=L.svg({pane:"me"});const gMe=L.layerGroup().addTo(map);
 let lineLayers={}, fitted=false;baseReady=true;
 const ll = c=>c.map(p=>[p[1],p[0]]);
 function bounds(){const all=[...lines,...zones,...pts,...stations].flatMap(f=>ll(f.coords));return all.length?L.latLngBounds(all):null}
 let flyNext=false;function fitAll(){const b=bounds();if(!b)return;if(flyNext){flyNext=false;map.flyToBounds(b,{padding:[40,40],duration:1.2})}else map.fitBounds(b,{padding:[40,40]})}
 function featClick(f,e,normal){L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(shapeEdit)return;if(editMode){openFeat(f);return}normal()}
-function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers();lineLayers={};
+function drawPot(){gPot.clearLayers();if(!potOn)return;allLayer.filter(f=>f.kind==="potentiel").forEach(f=>{const c=ll(dec(f.c));if(c.length<3)return;L.polygon(c,{color:"#ff7f00",weight:2,fillColor:"#ff7f00",fillOpacity:.7,className:"potz",pmIgnore:true}).bindTooltip(esc(f.name||"Potentiel acéricole")+(f.ha?" · "+String(f.ha).replace(".",",")+" ha":"")+" · à valider",{sticky:true}).on("click",e=>featClick(f,e,()=>{})).addTo(gPot)})}
+function drawBase(){drawPot();gZones.clearLayers();gLines.clearLayers();gPts.clearLayers();lineLayers={};
  if(!fitted&&bounds()){fitAll();fitted=true}
- if(!map._loaded){const a=allLayer.flatMap(f=>ll(dec(f.c)));if(!a.length)return;map.fitBounds(L.latLngBounds(a),{padding:[40,40]})}
+ if(!map._loaded){const a=allLayer.filter(f=>f.kind!=="potentiel").flatMap(f=>ll(dec(f.c)));if(!a.length)return;map.fitBounds(L.latLngBounds(a),{padding:[40,40]})}
  zones.forEach(z=>L.polygon(ll(z.coords),{color:z.color,weight:2.5,fillColor:z.color,fillOpacity:.15}).bindTooltip(z.name,{permanent:true,direction:"center",className:"lbl"}).on("click",e=>featClick(z,e,()=>openZone(z))).addTo(gZones));
  stations.forEach(s=>L.polygon(ll(s.coords),{color:"#ffffff",weight:2,fillColor:"#1f4a33",fillOpacity:.8}).bindTooltip(s.name||"Station",{direction:"top"}).on("click",e=>featClick(s,e,()=>{})).addTo(gZones));
  lines.forEach(l=>{const st=lst(l.id).status||"ok",c=ll(l.coords);
@@ -156,20 +157,21 @@ function drawBase(){gZones.clearLayers();gLines.clearLayers();gPts.clearLayers()
   lineLayers[l.id]={vis,hit}});
  pts.forEach(p=>{const [x,y]=p.coords[0],k=icoOf(p);L.marker([y,x],{icon:L.divIcon({className:"",html:icoHtml(k,30),iconSize:[30,30],iconAnchor:[15,15]})}).bindTooltip(p.name,{permanent:true,direction:"right",className:"lbl",offset:[14,0]}).on("click",e=>featClick(p,e,()=>openPoint(p))).addTo(gPts)});
  drawOthers()}
-function drawOthers(){const oth=allLayer.filter(f=>sectOf(f)!==curSect&&sectors.some(x=>x.id===sectOf(f)));const named={};
+function drawOthers(){const oth=allLayer.filter(f=>f.kind!=="potentiel"&&sectOf(f)!==curSect&&sectors.some(x=>x.id===sectOf(f)));const named={};
  oth.forEach(f=>{const c=ll(dec(f.c)),sid=sectOf(f),go=e=>{L.DomEvent.stop(e);if(drawing||pickMode||shapeEdit||editMode)return;switchSect(sid)};
   if(f.kind==="zone"&&c.length>2){const pg=L.polygon(c,{color:"#ffd27a",weight:2,dashArray:"6 5",fillColor:"#ffd27a",fillOpacity:.08}).on("click",go).addTo(gZones);
    if(!named[sid]){named[sid]=1;pg.bindTooltip(sectName(sid)+" ›",{permanent:true,direction:"center",className:"lbl lblo",interactive:true})}}
   else if(f.kind==="ligne"&&c.length>1)L.polyline(c,{color:"#ffffff",weight:2,opacity:.55,interactive:false}).addTo(gLines)});
  sectors.filter(x=>x.id!==curSect&&!named[x.id]).forEach(x=>{const fs=oth.filter(f=>sectOf(f)===x.id);if(!fs.length)return;const b=L.latLngBounds(fs.flatMap(f=>ll(dec(f.c))));
   L.marker(b.getCenter(),{icon:L.divIcon({className:"",iconSize:[0,0],html:""})}).bindTooltip(x.nom+" ›",{permanent:true,direction:"center",className:"lbl lblo",interactive:true}).on("click",e=>{L.DomEvent.stop(e);switchSect(x.id)}).addTo(gPts)})}
-$("#legend").innerHTML=Object.values(LSTAT).map(s=>`<div><i style="background:${s.h};outline:1px solid #0006"></i>Ligne ${s.l.toLowerCase()}</div>`).join("")+`<div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Signalement ouvert</div><div><i style="border:3px solid #e5432b;height:12px;width:12px;border-radius:50%;background:#fff8"></i>Réparé</div><div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;outline:2px dashed #e5432b;outline-offset:1px"></i>Reporté d'une saison passée</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #fff;outline:1px solid #0006"></i>Travaux en cours</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #f08a00"></i>Travaux à reprendre</div><div><i style="background:#fff8;height:11px;width:11px;transform:rotate(45deg);border:2px solid #00b3a4"></i>Travaux terminés</div><div><i style="background:#2f7bf0;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Ma position</div>`;
+$("#legend").innerHTML=`<div><i style="height:12px;width:18px;border:2px solid #ff7f00;background:repeating-linear-gradient(135deg,#ff7f00 0 2px,transparent 2px 5px)"></i>Potentiel acéricole à valider</div>`+Object.values(LSTAT).map(s=>`<div><i style="background:${s.h};outline:1px solid #0006"></i>Ligne ${s.l.toLowerCase()}</div>`).join("")+`<div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Signalement ouvert</div><div><i style="border:3px solid #e5432b;height:12px;width:12px;border-radius:50%;background:#fff8"></i>Réparé</div><div><i style="background:#e5432b;height:12px;width:12px;border-radius:50%;outline:2px dashed #e5432b;outline-offset:1px"></i>Reporté d'une saison passée</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #fff;outline:1px solid #0006"></i>Travaux en cours</div><div><i style="background:#00b3a4;height:11px;width:11px;transform:rotate(45deg);border:2px solid #f08a00"></i>Travaux à reprendre</div><div><i style="background:#fff8;height:11px;width:11px;transform:rotate(45deg);border:2px solid #00b3a4"></i>Travaux terminés</div><div><i style="background:#2f7bf0;height:12px;width:12px;border-radius:50%;border:2px solid #fff;outline:1px solid #0006"></i>Ma position</div>`;
 function drawObs(){gObs.clearLayers();visObs().forEach(o=>{if(o.lat==null)return;const t=TYPES[o.type]||TYPES.autre,done=isDone(o),old=sOf(o)<viewSeason;
  if(isWork(o)){const rep=o.status==="a_reprendre";L.marker([o.lat,o.lng],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div style="width:16px;height:16px;margin:3px;transform:rotate(45deg);background:${done?"#fff8":t.c};border:3px solid ${rep?"#f08a00":done?t.c:"#fff"};box-shadow:0 1px 4px #0008"></div>`})}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l+" · "+stLabel(o),{direction:"top"}).addTo(gObs);return}
  const urg=!done&&prOf(o)==="urgent";if(urg)L.circleMarker([o.lat,o.lng],{radius:16,color:"#d01f1f",weight:3,fill:false,interactive:false,className:"pulse"}).addTo(gObs);
  L.circleMarker([o.lat,o.lng],{radius:done?7:10,color:done?t.c:old?t.c:"#fff",weight:done?3:3,fillColor:done?"#ffffff":t.c,fillOpacity:done?.5:1,dashArray:old?"3 3":null}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l,{direction:"top"}).addTo(gObs)})}
 map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);$("#pop").classList.remove("on")});
 $("#bFit").onclick=()=>{follow=false;locBtn();fitAll()};
+{const pt=$("#potTog");if(pt){pt.checked=potOn;pt.onchange=()=>{potOn=pt.checked;ls.set("erab_pot",potOn);drawPot()}}}
 $("#bDash").onclick=()=>dashOpen();
 let bannerT=0;const banner=(t,ms)=>{const b=$("#banner");clearTimeout(bannerT);b.textContent=t||"";b.classList.toggle("on",!!t);if(t&&ms)bannerT=setTimeout(()=>banner(""),ms)};
 const drw=$("#drawer"),dsc=$("#dscrim");
@@ -552,7 +554,7 @@ function finishDraw(){const d=drawing;if(!d)return;const min=d.kind==="ligne"?2:
  const f={id:null,kind:d.kind,name:"",desc:"",color:d.kind==="zone"?PALETTE[2]:d.kind==="point"?"#2fa85f":"#33463a",c:enc(d.pts),ha:d.kind==="zone"?+areaHa(d.pts).toFixed(1):0,pot:0};
  stopDraw();openFeat(f)}
 function stopDraw(){drawing=null;gTmp.clearLayers();map.getContainer().style.cursor="";banner("");hideDbar()}
-function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Installation",station:"Bâtiment"}[f.kind];let ico=f.kind==="point"?(f.id?icoOf(f):(f.ico||"")):"";const c=dec(f.c);
+function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Installation",station:"Bâtiment",potentiel:"Potentiel à valider"}[f.kind];let ico=f.kind==="point"?(f.id?icoOf(f):(f.ico||"")):"";const c=dec(f.c);
  openSheet(head((f.id?"Modifier · ":"Nouveau · ")+kindL)+`
  <label class="f" for="fName">Nom</label><input type="text" id="fName" value="${esc(f.name)}" placeholder="${f.kind==="ligne"?"Ex. 13":f.kind==="point"?"Ex. Station Nord":"Ex. Zone 4"}">
  ${f.kind==="point"?`<label class="f">Type d'installation</label><div class="icogrid">${Object.entries(ICONS).map(([k,v])=>`<button class="icob" data-ico="${k}" aria-pressed="${k===ico}">${icoHtml(k,30)}<span>${v.l}</span></button>`).join("")}</div>
@@ -625,7 +627,7 @@ function showDraft(){const d=draft;if(d.lat!=null&&!d.lineManual){const nl=neare
 // ---------- connexion
 
 // ---------- tableau de bord carte plein écran (toutes les érablières)
-let dMap=null,dG={},dBase=null,dSel=null,dSect=ls.get("erab_dsect","*"),dPanel=ls.get("erab_dpanel","alertes"),dLay=ls.get("erab_dlay",{zones:1,lignes:1,obs:1,travaux:1,capteurs:1,pts:1}),dBaseK=ls.get("erab_dbase","sat"),dFlyNext=true;
+let dMap=null,dG={},dBase=null,dSel=null,dSect=ls.get("erab_dsect","*"),dPanel=ls.get("erab_dpanel","alertes"),dLay={pot:1,...ls.get("erab_dlay",{zones:1,lignes:1,obs:1,travaux:1,capteurs:1,pts:1})},dBaseK=ls.get("erab_dbase","sat"),dFlyNext=true;
 const DBASES={sat:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}","Imagerie © Esri"],topo:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}","Topo © Esri"],plan:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","© OpenStreetMap"]};
 const DFULL=`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`;
 const dIn=x=>dSect==="*"||sectOf(x)===dSect;
@@ -636,7 +638,7 @@ const dNf=n=>(+n||0).toLocaleString("fr-CA",{maximumFractionDigits:0});
 const dTl=iso=>{try{return new Date(iso).toLocaleTimeString("fr-CA",{hour:"2-digit",minute:"2-digit"})}catch(e){return ""}};
 const dToast=t=>banner(t,3000);
 const dTyping=()=>{const a=document.activeElement,r=$("#dr");return !!(a&&r&&r.contains(a)&&/TEXTAREA|INPUT/.test(a.tagName))};
-const dCenter=()=>{const all=allLayer.flatMap(f=>dec(f.c));if(!all.length)return [46.27,-74.24];return [all.reduce((a,p)=>a+p[1],0)/all.length,all.reduce((a,p)=>a+p[0],0)/all.length]};
+const dCenter=()=>{const all=allLayer.filter(f=>f.kind!=="potentiel").flatMap(f=>dec(f.c));if(!all.length)return [46.27,-74.24];return [all.reduce((a,p)=>a+p[1],0)/all.length,all.reduce((a,p)=>a+p[0],0)/all.length]};
 function dPos(v){if(v.lat!=null&&v.lng!=null)return [v.lat,v.lng];const fs=allLayer.filter(f=>sectOf(f)===sectOf(v));
  if(v.emplacement){const f=fs.find(x=>x.kind==="point"&&String(x.name).toLowerCase()===String(v.emplacement).toLowerCase());if(f){const c=dec(f.c)[0];return [c[1],c[0]]}}
  if(v.ligne){const n=String(v.ligne).toLowerCase(),f=fs.find(x=>x.kind==="ligne"&&(String(x.name).toLowerCase()===n||("ligne "+String(x.name).toLowerCase())===n));if(f){const c=dec(f.c);return [c[c.length-1][1],c[c.length-1][0]]}}return null}
@@ -649,17 +651,18 @@ function dashBuild(){const v=$("#dash");
  v.innerHTML=`<div class="dw"><div class="dl" id="dl"></div><div class="dc"><div id="dmap"></div><div class="dstats" id="dstats"></div>
   <div class="dtools"><button class="dbtn" id="dFull" title="Plein écran">${DFULL}</button><button class="dbtn" id="dFit" title="Recadrer">⤢</button></div></div><div class="dr" id="dr"></div></div>`;
  dMap=L.map("dmap",{zoomControl:true,attributionControl:true,preferCanvas:false});dSetBase();
- dG={zones:L.layerGroup().addTo(dMap),lignes:L.layerGroup().addTo(dMap),pts:L.layerGroup().addTo(dMap),obs:L.layerGroup().addTo(dMap),travaux:L.layerGroup().addTo(dMap),capteurs:L.layerGroup().addTo(dMap)};
+ dG={pot:L.layerGroup().addTo(dMap),zones:L.layerGroup().addTo(dMap),lignes:L.layerGroup().addTo(dMap),pts:L.layerGroup().addTo(dMap),obs:L.layerGroup().addTo(dMap),travaux:L.layerGroup().addTo(dMap),capteurs:L.layerGroup().addTo(dMap)};
  $("#dFull").onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(e){}};
  $("#dFit").onclick=()=>{dFlyNext=true;dFit()};
  dMap.on("click",()=>{if(dSel){dSel=null;dRight()}});
  dFit();dashUpdate();setTimeout(()=>dMap.invalidateSize(),200)}
 function dSetBase(){if(dBase)dMap.removeLayer(dBase);const b=DBASES[dBaseK]||DBASES.sat;dBase=L.tileLayer(b[0],{maxZoom:20,maxNativeZoom:19,attribution:b[1]}).addTo(dMap)}
-function dFit(){const pts=(dSect==="*"?allLayer:allLayer.filter(f=>sectOf(f)===dSect)).flatMap(f=>dec(f.c).map(p=>[p[1],p[0]]));if(!pts.length){dMap.setView(dCenter(),14);return}
+function dFit(){const pts=(dSect==="*"?allLayer:allLayer.filter(f=>sectOf(f)===dSect)).filter(f=>f.kind!=="potentiel").flatMap(f=>dec(f.c).map(p=>[p[1],p[0]]));if(!pts.length){dMap.setView(dCenter(),14);return}
  const b=L.latLngBounds(pts);dFlyNext&&dMap._loaded?dMap.flyToBounds(b,{padding:[30,30],duration:1}):dMap.fitBounds(b,{padding:[30,30]});dFlyNext=false}
 function dashUpdate(){if(!dMap)return;Object.values(dG).forEach(g=>g.clearLayers());const lab=dMap.getZoom()>=15;
  allLayer.forEach(f=>{const c=dec(f.c).map(p=>[p[1],p[0]]),dim=dSect!=="*"&&sectOf(f)!==dSect;if(!c.length)return;
-  if(f.kind==="zone"&&dLay.zones)L.polygon(c,{color:f.color||"#3468eb",weight:2,fillOpacity:dim?.03:.12,opacity:dim?.4:1}).bindTooltip(esc(f.name||""),{sticky:true}).addTo(dG.zones);
+  if(f.kind==="potentiel"){if(dLay.pot)L.polygon(c,{color:"#ff7f00",weight:2,fillColor:"#ff7f00",fillOpacity:dim?.3:.7,opacity:dim?.5:1,className:"potz"}).bindTooltip(esc(f.name||"Potentiel acéricole")+(f.ha?" · "+f.ha+" ha":"")+" · à valider",{sticky:true}).addTo(dG.pot)}
+  else if(f.kind==="zone"&&dLay.zones)L.polygon(c,{color:f.color||"#3468eb",weight:2,fillOpacity:dim?.03:.12,opacity:dim?.4:1}).bindTooltip(esc(f.name||""),{sticky:true}).addTo(dG.zones);
   else if(f.kind==="ligne"&&dLay.lignes){const st=lst(f.id).status||"ok",n=dOpen().filter(o=>o.line===f.id).length;
    L.polyline(c,{color:"#000",weight:7,opacity:dim?.15:.4,interactive:false}).addTo(dG.lignes);
    L.polyline(c,{color:LSTAT[st].h,weight:st==="ok"?3:5,opacity:dim?.4:1,dashArray:st==="verif"?"8 6":null}).bindTooltip(`${esc(f.name||"Ligne")} · ${LSTAT[st].l}${n?" · "+n+" signalement(s)":""}`,{sticky:true}).on("click",e=>{L.DomEvent.stop(e);dSel={k:"ligne",id:f.id};dPanel="detail";dRight()}).addTo(dG.lignes)}
@@ -677,7 +680,7 @@ function dStats(){const oo=dOpen().filter(dIn),br=allLayer.filter(f=>f.kind==="l
 function dLeft(){const n=id=>dOpen().filter(o=>!TYPES[o.type]?.w&&(id==="*"||sectOf(o)===id)).length;
  $("#dl").innerHTML=`<div class="row" style="margin-bottom:12px"><div class="logo" style="width:36px;height:36px;display:grid;place-items:center"><svg width="30" height="30"><use href="#leaf"/></svg></div><b style="font:700 20px 'Barlow Condensed';flex:1">Tableau de bord</b><button class="btn dsm" id="dBack" title="Quitter">✕</button></div>
  <div class="dh">Érablières</div>${[["*","Toutes"],...sectors.map(x=>[x.id,x.nom])].map(([k,l])=>`<button class="dsec" data-ds="${esc(k)}" aria-pressed="${dSect===k}"><span>${esc(l)}</span>${n(k)?`<b>${n(k)}</b>`:""}</button>`).join("")}
- <div class="dh">Couches</div>${[["zones","Zones"],["lignes","Maîtres-lignes"],["pts","Installations"],["obs","Signalements"],["travaux","Travaux"],["capteurs","Capteurs"]].map(([k,l])=>`<label class="dchk"><input type="checkbox" data-dl="${k}" ${dLay[k]?"checked":""}> ${l}</label>`).join("")}
+ <div class="dh">Couches</div>${[["pot","Potentiel à valider"],["zones","Zones"],["lignes","Maîtres-lignes"],["pts","Installations"],["obs","Signalements"],["travaux","Travaux"],["capteurs","Capteurs"]].map(([k,l])=>`<label class="dchk"><input type="checkbox" data-dl="${k}" ${dLay[k]?"checked":""}> ${l}</label>`).join("")}
  <div class="dh">Fond de carte</div><div class="row" style="gap:4px">${[["sat","Satellite"],["topo","Topo"],["plan","Plan"]].map(([k,l])=>`<button class="chip" data-db="${k}" aria-pressed="${dBaseK===k}">${l}</button>`).join("")}</div>
  <div class="dh">Légende</div><div class="dleg">${Object.values(LSTAT).map(x=>`<div><i style="background:${x.h};outline:1px solid #0006"></i>Ligne ${x.l.toLowerCase()}</div>`).join("")}${Object.entries(TYPES).filter(([k,t])=>!t.w).map(([k,t])=>`<div><i style="background:${t.c};border-radius:50%;width:10px;height:10px"></i>${t.l}</div>`).join("")}<div><i style="border:3px solid #d01f1f;border-radius:50%;width:12px;height:12px;background:none"></i>Urgent</div><div><i style="background:#00b3a4;transform:rotate(45deg);width:10px;height:10px"></i>Travaux</div></div>`;
  $("#dBack").onclick=dashClose;
