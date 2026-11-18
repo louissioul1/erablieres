@@ -171,6 +171,7 @@ img.ploading{background:linear-gradient(90deg,var(--chip) 25%,color-mix(in srgb,
 @media (max-width:1100px){.dw{grid-template-columns:230px 1fr 320px}}
 @media (max-width:760px){#dash{overflow:auto}.dw{grid-template-columns:1fr;grid-template-rows:60vh auto auto;height:auto}.dc{height:60vh;order:-1}.dr{order:0}.dl{order:1}.dl,.dr{border:0;padding-top:14px}.dstats{font-size:12px;gap:8px;padding:6px 10px;left:10px;transform:none;max-width:calc(100% - 70px);overflow:auto}}
 .potz{fill:url(#potHatch)}
+.prevpt{width:30px;height:30px;margin:2px;border-radius:8px;background:#e0218a;color:#fff;font:800 14px/30px "Barlow Condensed",sans-serif;text-align:center;border:2px solid #fff;box-shadow:0 1px 6px #0009}.prevpt.st{background:#7a3cff;border-radius:50%;font-size:17px}
 .ecopop .leaflet-popup-content{font:14px/1.4 Barlow,sans-serif;margin:10px 12px}.ecopop a{font-weight:700;color:#1f4a33}
 .potchk{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;cursor:pointer}.potchk input{width:18px;height:18px;accent-color:#ff7f00}
 </style>
@@ -190,6 +191,8 @@ img.ploading{background:linear-gradient(90deg,var(--chip) 25%,color-mix(in srgb,
 <div class="pop" id="pop">
  <h3>Fond de carte</h3><div class="types bases" id="bases"></div>
  <label class="potchk"><input type="checkbox" id="potTog"> Afficher le potentiel acéricole à valider</label>
+ <label class="potchk"><input type="checkbox" id="prevTog"> Prévision maîtres-lignes et stations</label>
+ <label class="potchk"><input type="checkbox" id="curvTog"> Courbes de niveau LiDAR (MRNF)</label>
  <label class="potchk"><input type="checkbox" id="ecoTog"> Peuplements écoforestiers (MRNF)</label>
  <h3 style="margin-top:12px">Légende</h3><div class="legend" id="legend"></div>
 </div>
