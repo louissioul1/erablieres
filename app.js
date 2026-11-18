@@ -169,9 +169,16 @@ function drawObs(){gObs.clearLayers();visObs().forEach(o=>{if(o.lat==null)return
  if(isWork(o)){const rep=o.status==="a_reprendre";L.marker([o.lat,o.lng],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],html:`<div style="width:16px;height:16px;margin:3px;transform:rotate(45deg);background:${done?"#fff8":t.c};border:3px solid ${rep?"#f08a00":done?t.c:"#fff"};box-shadow:0 1px 4px #0008"></div>`})}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l+" · "+stLabel(o),{direction:"top"}).addTo(gObs);return}
  const urg=!done&&prOf(o)==="urgent";if(urg)L.circleMarker([o.lat,o.lng],{radius:16,color:"#d01f1f",weight:3,fill:false,interactive:false,className:"pulse"}).addTo(gObs);
  L.circleMarker([o.lat,o.lng],{radius:done?7:10,color:done?t.c:old?t.c:"#fff",weight:done?3:3,fillColor:done?"#ffffff":t.c,fillOpacity:done?.5:1,dashArray:old?"3 3":null}).on("click",e=>{L.DomEvent.stop(e);if(drawing){addDrawPt(e.latlng);return}if(pickMode){setPick(e.latlng);return}if(editMode||shapeEdit)return;openObs(o)}).bindTooltip(t.l,{direction:"top"}).addTo(gObs)})}
-map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);$("#pop").classList.remove("on")});
+// ---------- peuplements écoforestiers (WMS du MRNF, Direction des inventaires forestiers)
+const ECO_URL="https://geoegl.msp.gouv.qc.ca/ws/mffpecofor.fcgi";
+const ecoWms=pane=>L.tileLayer.wms(ECO_URL+"?",{layers:"ori_pee_close_scale",styles:"Couleur_avec_etiquette",format:"image/png",transparent:true,version:"1.3.0",opacity:.6,maxZoom:21,pane,attribution:"Peuplements écoforestiers © MRNF"});
+map.createPane("eco").style.zIndex=250;let ecoOn=ls.get("erab_eco",false);const ecoL=ecoWms("eco");
+const ecoSet=on=>{ecoOn=on;ls.set("erab_eco",on);if(on)ecoL.addTo(map);else map.removeLayer(ecoL);if(on&&map.getZoom()<12.5)banner("Rapprochez la carte pour voir les peuplements",3000)};if(ecoOn)ecoL.addTo(map);
+const ecoInfoUrl=ll=>{const d=.0006;return ECO_URL+`?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=ori_pee_close_scale&QUERY_LAYERS=ori_pee_close_scale&STYLES=&CRS=EPSG:4326&BBOX=${(ll.lat-d).toFixed(6)},${(ll.lng-d).toFixed(6)},${(ll.lat+d).toFixed(6)},${(ll.lng+d).toFixed(6)}&WIDTH=101&HEIGHT=101&I=50&J=50&INFO_FORMAT=text/html&FEATURE_COUNT=1`};
+const ecoPopup=(m,ll)=>L.popup({className:"ecopop"}).setLatLng(ll).setContent(`<b>Peuplement écoforestier</b><br><a href="${ecoInfoUrl(ll)}" target="_blank" rel="noopener">Voir la fiche du MRNF ›</a><div class="meta">Essences, âge, densité, hauteur, dépôt, drainage</div>`).openOn(m);
+map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);else if(ecoOn&&!editMode&&!shapeEdit&&map.getZoom()>=12.5)ecoPopup(map,e.latlng);$("#pop").classList.remove("on")});
 $("#bFit").onclick=()=>{follow=false;locBtn();fitAll()};
-{const pt=$("#potTog");if(pt){pt.checked=potOn;pt.onchange=()=>{potOn=pt.checked;ls.set("erab_pot",potOn);drawPot()}}}
+{const pt=$("#potTog");if(pt){pt.checked=potOn;pt.onchange=()=>{potOn=pt.checked;ls.set("erab_pot",potOn);drawPot()}}const et=$("#ecoTog");if(et){et.checked=ecoOn;et.onchange=()=>ecoSet(et.checked)}}
 $("#bDash").onclick=()=>dashOpen();
 let bannerT=0;const banner=(t,ms)=>{const b=$("#banner");clearTimeout(bannerT);b.textContent=t||"";b.classList.toggle("on",!!t);if(t&&ms)bannerT=setTimeout(()=>banner(""),ms)};
 const drw=$("#drawer"),dsc=$("#dscrim");
@@ -627,7 +634,7 @@ function showDraft(){const d=draft;if(d.lat!=null&&!d.lineManual){const nl=neare
 // ---------- connexion
 
 // ---------- tableau de bord carte plein écran (toutes les érablières)
-let dMap=null,dG={},dBase=null,dSel=null,dSect=ls.get("erab_dsect","*"),dPanel=ls.get("erab_dpanel","alertes"),dLay={pot:1,...ls.get("erab_dlay",{zones:1,lignes:1,obs:1,travaux:1,capteurs:1,pts:1})},dBaseK=ls.get("erab_dbase","sat"),dFlyNext=true;
+let dMap=null,dG={},dBase=null,dSel=null,dSect=ls.get("erab_dsect","*"),dPanel=ls.get("erab_dpanel","alertes"),dLay={pot:1,eco:0,...ls.get("erab_dlay",{zones:1,lignes:1,obs:1,travaux:1,capteurs:1,pts:1})},dBaseK=ls.get("erab_dbase","sat"),dFlyNext=true;
 const DBASES={sat:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}","Imagerie © Esri"],topo:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}","Topo © Esri"],plan:["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png","© OpenStreetMap"]};
 const DFULL=`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`;
 const dIn=x=>dSect==="*"||sectOf(x)===dSect;
@@ -644,7 +651,7 @@ function dPos(v){if(v.lat!=null&&v.lng!=null)return [v.lat,v.lng];const fs=allLa
  if(v.ligne){const n=String(v.ligne).toLowerCase(),f=fs.find(x=>x.kind==="ligne"&&(String(x.name).toLowerCase()===n||("ligne "+String(x.name).toLowerCase())===n));if(f){const c=dec(f.c);return [c[c.length-1][1],c[c.length-1][0]]}}return null}
 function dashOpen(){if(dMap)return;let o=$("#dash");if(!o){o=document.createElement("div");o.id="dash";document.body.appendChild(o)}o.classList.add("on");menu(false);dFlyNext=true;dashBuild();
  try{const e=document.documentElement;if(!document.fullscreenElement&&e.requestFullscreen&&matchMedia("(min-width:900px)").matches)e.requestFullscreen().catch(()=>{})}catch(e){}}
-function dashClose(){try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}if(dMap){dMap.remove();dMap=null}const o=$("#dash");if(o){o.classList.remove("on");o.innerHTML=""}dSel=null;setTimeout(()=>map.invalidateSize(),100)}
+function dashClose(){try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}if(dMap){dMap.remove();dMap=null;dEco=null}const o=$("#dash");if(o){o.classList.remove("on");o.innerHTML=""}dSel=null;setTimeout(()=>map.invalidateSize(),100)}
 const dRefresh=()=>{if(dMap)dashUpdate()};
 addEventListener("keydown",e=>{if(e.key==="Escape"&&dMap&&!document.fullscreenElement)dashClose()});
 function dashBuild(){const v=$("#dash");
@@ -654,8 +661,9 @@ function dashBuild(){const v=$("#dash");
  dG={pot:L.layerGroup().addTo(dMap),zones:L.layerGroup().addTo(dMap),lignes:L.layerGroup().addTo(dMap),pts:L.layerGroup().addTo(dMap),obs:L.layerGroup().addTo(dMap),travaux:L.layerGroup().addTo(dMap),capteurs:L.layerGroup().addTo(dMap)};
  $("#dFull").onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(e){}};
  $("#dFit").onclick=()=>{dFlyNext=true;dFit()};
- dMap.on("click",()=>{if(dSel){dSel=null;dRight()}});
+ dMap.on("click",e=>{if(dLay.eco&&dMap.getZoom()>=12.5)ecoPopup(dMap,e.latlng);if(dSel){dSel=null;dRight()}});
  dFit();dashUpdate();setTimeout(()=>dMap.invalidateSize(),200)}
+let dEco=null;function dEcoSync(){if(!dMap)return;if(dLay.eco&&!dEco){if(!dMap.getPane("eco"))dMap.createPane("eco").style.zIndex=250;dEco=ecoWms("eco").addTo(dMap)}else if(!dLay.eco&&dEco){dMap.removeLayer(dEco);dEco=null}}
 function dSetBase(){if(dBase)dMap.removeLayer(dBase);const b=DBASES[dBaseK]||DBASES.sat;dBase=L.tileLayer(b[0],{maxZoom:20,maxNativeZoom:19,attribution:b[1]}).addTo(dMap)}
 function dFit(){const pts=(dSect==="*"?allLayer:allLayer.filter(f=>sectOf(f)===dSect)).filter(f=>f.kind!=="potentiel").flatMap(f=>dec(f.c).map(p=>[p[1],p[0]]));if(!pts.length){dMap.setView(dCenter(),14);return}
  const b=L.latLngBounds(pts);dFlyNext&&dMap._loaded?dMap.flyToBounds(b,{padding:[30,30],duration:1}):dMap.fitBounds(b,{padding:[30,30]});dFlyNext=false}
@@ -674,13 +682,13 @@ function dashUpdate(){if(!dMap)return;Object.values(dG).forEach(g=>g.clearLayers
   m.bindTooltip(`${esc(t.l)}${asgOf(o).length?" → "+esc(asgOf(o).map(a=>a.nom).join(", ")):""}`,{direction:"top"}).on("click",e=>{L.DomEvent.stop(e);dSel={k:"obs",id:o.id};dPanel="detail";dRight()}).addTo(w?dG.travaux:dG.obs)});
  if(dLay.capteurs){const pile={};vac.forEach(v=>{const p=dPos(v);if(!p)return;const k=p[0].toFixed(5)+p[1].toFixed(5),i=pile[k]=(pile[k]??-1)+1,st=vSt(v);
   L.marker(p,{icon:L.divIcon({className:"",iconSize:[80,24],iconAnchor:[40,12-i*27],html:`<div class="vpill${v.etat==="alarme"?" valarm":""}" style="--c:${st.c}">${(VTYP[v.type]||VTYP.vide).i} ${vFmt(v)}</div>`}),zIndexOffset:400}).bindTooltip(esc(v.nom)+" · "+st.l,{direction:"top"}).on("click",e=>{L.DomEvent.stop(e);dSel={k:"capteur",id:v.id};dPanel="detail";dRight()}).addTo(dG.capteurs)})}
- if(dFlyNext)dFit();dLeft();if(!dTyping())dRight();dStats()}
+ if(dFlyNext)dFit();dEcoSync();dLeft();if(!dTyping())dRight();dStats()}
 function dStats(){const oo=dOpen().filter(dIn),br=allLayer.filter(f=>f.kind==="ligne"&&dIn(f)&&["bris","rep"].includes(lst(f.id).status)).length,ca=vac.filter(v=>dIn(v)&&["alarme","bas"].includes(v.etat)).length,now=heures.filter(h=>h.open&&dIn(h)).length;
  $("#dstats").innerHTML=`<span><b style="color:#ff6b5a">${oo.filter(o=>!TYPES[o.type]?.w).length}</b> signalements</span><span><b style="color:#ffc21a">${br}</b> lignes en bris</span><span><b style="color:#ff6b5a">${ca}</b> capteurs en alerte</span><span><b style="color:#7be0a0">${now}</b> au travail</span><span class="meta" style="color:#cfe">${new Date().toLocaleTimeString("fr-CA",{hour:"2-digit",minute:"2-digit"})}</span>`}
 function dLeft(){const n=id=>dOpen().filter(o=>!TYPES[o.type]?.w&&(id==="*"||sectOf(o)===id)).length;
  $("#dl").innerHTML=`<div class="row" style="margin-bottom:12px"><div class="logo" style="width:36px;height:36px;display:grid;place-items:center"><svg width="30" height="30"><use href="#leaf"/></svg></div><b style="font:700 20px 'Barlow Condensed';flex:1">Tableau de bord</b><button class="btn dsm" id="dBack" title="Quitter">✕</button></div>
  <div class="dh">Érablières</div>${[["*","Toutes"],...sectors.map(x=>[x.id,x.nom])].map(([k,l])=>`<button class="dsec" data-ds="${esc(k)}" aria-pressed="${dSect===k}"><span>${esc(l)}</span>${n(k)?`<b>${n(k)}</b>`:""}</button>`).join("")}
- <div class="dh">Couches</div>${[["pot","Potentiel à valider"],["zones","Zones"],["lignes","Maîtres-lignes"],["pts","Installations"],["obs","Signalements"],["travaux","Travaux"],["capteurs","Capteurs"]].map(([k,l])=>`<label class="dchk"><input type="checkbox" data-dl="${k}" ${dLay[k]?"checked":""}> ${l}</label>`).join("")}
+ <div class="dh">Couches</div>${[["eco","Peuplements écoforestiers"],["pot","Potentiel à valider"],["zones","Zones"],["lignes","Maîtres-lignes"],["pts","Installations"],["obs","Signalements"],["travaux","Travaux"],["capteurs","Capteurs"]].map(([k,l])=>`<label class="dchk"><input type="checkbox" data-dl="${k}" ${dLay[k]?"checked":""}> ${l}</label>`).join("")}
  <div class="dh">Fond de carte</div><div class="row" style="gap:4px">${[["sat","Satellite"],["topo","Topo"],["plan","Plan"]].map(([k,l])=>`<button class="chip" data-db="${k}" aria-pressed="${dBaseK===k}">${l}</button>`).join("")}</div>
  <div class="dh">Légende</div><div class="dleg">${Object.values(LSTAT).map(x=>`<div><i style="background:${x.h};outline:1px solid #0006"></i>Ligne ${x.l.toLowerCase()}</div>`).join("")}${Object.entries(TYPES).filter(([k,t])=>!t.w).map(([k,t])=>`<div><i style="background:${t.c};border-radius:50%;width:10px;height:10px"></i>${t.l}</div>`).join("")}<div><i style="border:3px solid #d01f1f;border-radius:50%;width:12px;height:12px;background:none"></i>Urgent</div><div><i style="background:#00b3a4;transform:rotate(45deg);width:10px;height:10px"></i>Travaux</div></div>`;
  $("#dBack").onclick=dashClose;
