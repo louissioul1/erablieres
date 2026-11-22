@@ -137,7 +137,8 @@ function setBase(k){if(!BASES[k])k="hyb";baseKey=k;ls.set("erab_base",k);if(base
  document.querySelectorAll(".bases").forEach(el=>el.innerHTML=Object.entries(BASES).map(([kk,v])=>`<button class="chip" data-base="${kk}" aria-pressed="${kk===k}">${v.l}</button>`).join(""));
  document.querySelectorAll("[data-base]").forEach(x=>x.onclick=()=>setBase(x.dataset.base))}
 setBase(baseKey);
-let potOn=ls.get("erab_pot",true);const gPot=L.layerGroup().addTo(map),gZones=L.layerGroup().addTo(map), gLines=L.layerGroup().addTo(map), gPts=L.layerGroup().addTo(map), gObs=L.layerGroup().addTo(map), gVac=L.layerGroup().addTo(map), gTmp=L.layerGroup().addTo(map);
+let relOn=ls.get("erab_rel",true);const gRel=L.layerGroup();let potOn=ls.get("erab_pot",true);const gPot=L.layerGroup().addTo(map),gZones=L.layerGroup().addTo(map), gLines=L.layerGroup().addTo(map), gPts=L.layerGroup().addTo(map), gObs=L.layerGroup().addTo(map), gVac=L.layerGroup().addTo(map), gTmp=L.layerGroup().addTo(map);
+gRel.addTo(map);
 map.createPane("me").style.zIndex=650;const meR=L.svg({pane:"me"});const gMe=L.layerGroup().addTo(map);
 let lineLayers={}, fitted=false;baseReady=true;
 const ll = c=>c.map(p=>[p[1],p[0]]);
@@ -168,6 +169,9 @@ function drawBase(){drawPot();drawPrev();gZones.clearLayers();gLines.clearLayers
   const vis=L.polyline(c,{color:st==="ok"&&lightBase()?"#1f4a33":LSTAT[st].h,weight:st==="ok"?3:5,opacity:1,dashArray:st==="verif"?"8 6":null,interactive:false}).addTo(gLines);
   const hit=L.polyline(c,{color:"#000",opacity:0,weight:22}).bindTooltip(l.label+" · "+fmtM(l.len),{sticky:true}).on("click",e=>featClick(l,e,()=>openLine(l))).addTo(gLines);
   lineLayers[l.id]={vis,hit}});
+ gRel.clearLayers();if(relOn)allLayer.filter(f=>f.kind==="releve").forEach(f=>{const c=ll(dec(f.c));if(c.length<2)return;let len=0;const d=dec(f.c);for(let i=1;i<d.length;i++)len+=hav(d[i-1],d[i]);
+  L.polyline(c,{color:"#000",weight:6,opacity:.35,interactive:false}).addTo(gRel);L.polyline(c,{color:f.color||"#e040fb",weight:3.5,opacity:1,interactive:false}).addTo(gRel);
+  L.polyline(c,{color:"#000",opacity:0,weight:22}).bindTooltip(esc(f.name||"Relevé")+" · "+fmtM(len)+" · relevé SW Maps",{sticky:true}).on("click",e=>featClick(f,e,()=>openFeat(f))).addTo(gRel)});
  pts.forEach(p=>{const [x,y]=p.coords[0],k=icoOf(p);L.marker([y,x],{icon:L.divIcon({className:"",html:icoHtml(k,30),iconSize:[30,30],iconAnchor:[15,15]})}).bindTooltip(p.name,{permanent:true,direction:"right",className:"lbl",offset:[14,0]}).on("click",e=>featClick(p,e,()=>openPoint(p))).addTo(gPts)});
  drawOthers()}
 function drawOthers(){const oth=allLayer.filter(f=>f.kind!=="potentiel"&&f.kind!=="prevision"&&sectOf(f)!==curSect&&sectors.some(x=>x.id===sectOf(f)));const named={};
@@ -192,9 +196,27 @@ map.createPane("curv").style.zIndex=260;let curvOn=ls.get("erab_curv",false);con
 const curvSet=on=>{curvOn=on;ls.set("erab_curv",on);if(on)curvL.addTo(map);else map.removeLayer(curvL);if(on&&map.getZoom()<12.5)banner("Rapprochez la carte pour voir les courbes de niveau",3000)};
 const ecoInfoUrl=ll=>{const d=.0006;return ECO_URL+`?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=ori_pee_close_scale&QUERY_LAYERS=ori_pee_close_scale&STYLES=&CRS=EPSG:4326&BBOX=${(ll.lat-d).toFixed(6)},${(ll.lng-d).toFixed(6)},${(ll.lat+d).toFixed(6)},${(ll.lng+d).toFixed(6)}&WIDTH=101&HEIGHT=101&I=50&J=50&INFO_FORMAT=text/html&FEATURE_COUNT=1`};
 const ecoPopup=(m,ll)=>L.popup({className:"ecopop"}).setLatLng(ll).setContent(`<b>Peuplement écoforestier</b><br><a href="${ecoInfoUrl(ll)}" target="_blank" rel="noopener">Voir la fiche du MRNF ›</a><div class="meta">Essences, âge, densité, hauteur, dépôt, drainage</div>`).openOn(m);
-map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);else if(ecoOn&&!editMode&&!shapeEdit&&map.getZoom()>=12.5)ecoPopup(map,e.latlng);$("#pop").classList.remove("on")});
+// cadastre rénové (lots) — service public du gouvernement du Québec
+const CAD_URL="https://geo.environnement.gouv.qc.ca/donnees/rest/services/Reference/Cadastre_allege/MapServer";
+const CadLayer=L.TileLayer.extend({getTileUrl(c){const s=this.getTileSize(),nw=this._map.unproject(c.scaleBy(s),c.z),se=this._map.unproject(c.add([1,1]).scaleBy(s),c.z),A=L.CRS.EPSG3857.project(nw),B=L.CRS.EPSG3857.project(se);
+ return CAD_URL+`/export?bbox=${A.x},${B.y},${B.x},${A.y}&bboxSR=3857&imageSR=3857&size=${s.x},${s.y}&format=png32&transparent=true&layers=show:0&dpi=96&f=image`}});
+const cadWms=pane=>new CadLayer("",{pane,maxZoom:21,minZoom:13,attribution:"Cadastre © Gouvernement du Québec"});
+map.createPane("cad").style.zIndex=270;let cadOn=ls.get("erab_cad",false);const cadL=cadWms("cad");if(cadOn)cadL.addTo(map);
+const cadSet=on=>{cadOn=on;ls.set("erab_cad",on);if(on)cadL.addTo(map);else{map.removeLayer(cadL);gCadSel.clearLayers()}if(on&&map.getZoom()<14)banner("Rapprochez la carte pour voir les lots du cadastre",3000)};
+const gCadSel=L.layerGroup().addTo(map);
+const fmtLot=n=>{const d=String(n||"").replace(/\D/g,"");return d.length===7?d[0]+" "+d.slice(1,4)+" "+d.slice(4):(n||"?")};
+async function cadPopup(m,ll,grp){const p=L.popup({className:"ecopop"}).setLatLng(ll).setContent("<b>Cadastre</b><div class='meta'>Recherche du lot…</div>").openOn(m);
+ const extra=(m===map?ecoOn:dLay&&dLay.eco)?`<hr style="border:0;border-top:1px solid #ddd;margin:6px 0"><a href="${ecoInfoUrl(ll)}" target="_blank" rel="noopener">Peuplement écoforestier ›</a>`:"";
+ try{const u=CAD_URL+`/0/query?geometry=${ll.lng},${ll.lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=true&outSR=4326&f=geojson`;
+  const j=await (await fetch(u)).json();const f=j.features&&j.features[0];grp&&grp.clearLayers();
+  if(!f){p.setContent("<b>Cadastre</b><div class='meta'>Aucun lot trouvé ici.</div>"+extra);return}
+  const pr=f.properties||{};const no=pr.NO_LOT||pr.no_lot;const g=L.geoJSON(f,{style:{color:"#ffea00",weight:3,fill:true,fillOpacity:.08},interactive:false});if(grp)g.addTo(grp);
+  let ha="";try{const a=pr.SUPERFICIE||pr.Shape_Area||pr["SHAPE.AREA"];if(a)ha=" · "+(a/1e4).toFixed(1)+" ha"}catch(e){}
+  p.setContent(`<b>Lot ${esc(fmtLot(no))}</b>${ha}<div class="meta">Cadastre du Québec</div>`+extra)}
+ catch(e){p.setContent("<b>Cadastre</b><div class='meta'>Lot introuvable (réseau).</div>"+extra)}}
+map.on("click",e=>{if(drawing&&drawing.kind!=="gps")addDrawPt(e.latlng);else if(pickMode)setPick(e.latlng);else if(cadOn&&!editMode&&!shapeEdit&&map.getZoom()>=14)cadPopup(map,e.latlng,gCadSel);else if(ecoOn&&!editMode&&!shapeEdit&&map.getZoom()>=12.5)ecoPopup(map,e.latlng);$("#pop").classList.remove("on")});
 $("#bFit").onclick=()=>{follow=false;locBtn();fitAll()};
-{const pt=$("#potTog");if(pt){pt.checked=potOn;pt.onchange=()=>{potOn=pt.checked;ls.set("erab_pot",potOn);drawPot()}}const et=$("#ecoTog");if(et){et.checked=ecoOn;et.onchange=()=>ecoSet(et.checked)}const ct=$("#curvTog");if(ct){ct.checked=curvOn;ct.onchange=()=>curvSet(ct.checked)}const pv=$("#prevTog");if(pv){pv.checked=prevOn;pv.onchange=()=>{prevOn=pv.checked;ls.set("erab_prev",prevOn);drawPrev()}}}
+{const pt=$("#potTog");if(pt){pt.checked=potOn;pt.onchange=()=>{potOn=pt.checked;ls.set("erab_pot",potOn);drawPot()}}const et=$("#ecoTog");if(et){et.checked=ecoOn;et.onchange=()=>ecoSet(et.checked)}const ct=$("#curvTog");if(ct){ct.checked=curvOn;ct.onchange=()=>curvSet(ct.checked)}const kt=$("#cadTog");if(kt){kt.checked=cadOn;kt.onchange=()=>cadSet(kt.checked)}const rt=$("#relTog");if(rt){rt.checked=relOn;rt.onchange=()=>{relOn=rt.checked;ls.set("erab_rel",relOn);drawBase()}}const pv=$("#prevTog");if(pv){pv.checked=prevOn;pv.onchange=()=>{prevOn=pv.checked;ls.set("erab_prev",prevOn);drawPrev()}}}
 $("#bDash").onclick=()=>dashOpen();
 let bannerT=0;const banner=(t,ms)=>{const b=$("#banner");clearTimeout(bannerT);b.textContent=t||"";b.classList.toggle("on",!!t);if(t&&ms)bannerT=setTimeout(()=>banner(""),ms)};
 const drw=$("#drawer"),dsc=$("#dscrim");
@@ -577,7 +599,7 @@ function finishDraw(){const d=drawing;if(!d)return;const min=d.kind==="ligne"?2:
  const f={id:null,kind:d.kind,name:"",desc:"",color:d.kind==="zone"?PALETTE[2]:d.kind==="point"?"#2fa85f":"#33463a",c:enc(d.pts),ha:d.kind==="zone"?+areaHa(d.pts).toFixed(1):0,pot:0};
  stopDraw();openFeat(f)}
 function stopDraw(){drawing=null;gTmp.clearLayers();map.getContainer().style.cursor="";banner("");hideDbar()}
-function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Installation",station:"Bâtiment",potentiel:"Potentiel à valider",prevision:"Prévision"}[f.kind];let ico=f.kind==="point"?(f.id?icoOf(f):(f.ico||"")):"";const c=dec(f.c);
+function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Installation",station:"Bâtiment",potentiel:"Potentiel à valider",prevision:"Prévision",releve:"Relevé terrain"}[f.kind];let ico=f.kind==="point"?(f.id?icoOf(f):(f.ico||"")):"";const c=dec(f.c);
  openSheet(head((f.id?"Modifier · ":"Nouveau · ")+kindL)+`
  <label class="f" for="fName">Nom</label><input type="text" id="fName" value="${esc(f.name)}" placeholder="${f.kind==="ligne"?"Ex. 13":f.kind==="point"?"Ex. Station Nord":"Ex. Zone 4"}">
  ${f.kind==="point"?`<label class="f">Type d'installation</label><div class="icogrid">${Object.entries(ICONS).map(([k,v])=>`<button class="icob" data-ico="${k}" aria-pressed="${k===ico}">${icoHtml(k,30)}<span>${v.l}</span></button>`).join("")}</div>
@@ -585,7 +607,7 @@ function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Installation"
  ${f.kind==="zone"?`<div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label class="f" for="fHa">Superficie (ha)</label><input type="number" step="0.1" id="fHa" value="${f.ha||""}"></div><div style="flex:1"><label class="f" for="fPot">Potentiel (entailles)</label><input type="number" id="fPot" value="${f.pot||""}"></div></div><div class="small">Superficie calculée du tracé : ${areaHa(c).toFixed(1)} ha</div>`:""}
  ${f.kind==="zone"||f.kind==="station"?`<label class="f">Couleur</label><div class="types">${PALETTE.map(p=>`<button class="chip" data-col="${p}" aria-pressed="${p===f.color}" style="width:46px;background:${p};border:3px solid ${p===f.color?"var(--ink)":p}" aria-label="Couleur ${p}"></button>`).join("")}</div>`:f.kind!=="ligne"?"":`<div class="small" style="margin-top:8px">${fmtM(c.reduce((a,p,i)=>i?a+hav(c[i-1],p):0,0))} · ${c.length} points</div>`}
  <label class="f" for="fDesc">Description</label><textarea id="fDesc">${esc(f.desc||"")}</textarea>
- <div class="row" style="margin-top:16px"><button class="btn pri" id="fSave" style="flex:1">Enregistrer</button>${f.id?`<button class="btn" id="fShape">Modifier le tracé</button><button class="btn red" id="fDel">Supprimer</button>`:""}</div><div id="fConf"></div><div class="err" id="fErr"></div>`);
+ <div class="row" style="margin-top:16px"><button class="btn pri" id="fSave" style="flex:1">Enregistrer</button>${f.id?`<button class="btn" id="fShape">Modifier le tracé</button><button class="btn red" id="fDel">Supprimer</button>`:""}</div>${f.id&&f.kind==="releve"?`<div class="row" style="margin-top:8px"><button class="btn" id="fConv" style="flex:1">Convertir en maître-ligne</button></div>`:""}<div id="fConf"></div><div class="err" id="fErr"></div>`);
  let col=f.color;
  sheet.querySelectorAll("[data-ico]").forEach(b=>b.onclick=()=>{const prev=ico;ico=b.dataset.ico;col=ICONS[ico].c;const nm=$("#fName");if(!nm.value.trim()||(prev&&nm.value.trim()===ICONS[prev].l))nm.value=ICONS[ico].l;sheet.querySelectorAll("[data-ico]").forEach(x=>x.setAttribute("aria-pressed",x===b))});
  const fg=$("#fGps");if(fg)fg.onclick=async()=>{fg.disabled=true;$("#fPos").textContent="Recherche du GPS…";try{const p=await waitFix();f.c=enc([[p.lng,p.lat]]);$("#fPos").textContent=p.lat.toFixed(6)+", "+p.lng.toFixed(6)+" (± "+Math.round(p.acc)+" m)"}catch(e){$("#fPos").textContent="GPS non disponible."}fg.disabled=false};
@@ -594,12 +616,13 @@ function openFeat(f){const kindL={ligne:"Ligne",zone:"Zone",point:"Installation"
   try{await seedBase();const v={sect:f.sect||curSect,kind:f.kind,name:$("#fName").value.trim()||(f.kind==="ligne"?"Sans nom":kindL),desc:$("#fDesc").value.trim(),color:col,c:f.c,ha:f.kind==="zone"?+($("#fHa").value||areaHa(c).toFixed(1)):0,pot:f.kind==="zone"?+($("#fPot").value||0):0,ord:f.ord??Date.now(),...(f.kind==="point"?{ico:ico||"repere"}:{})};if(f.kind==="point")v.color=ICONS[v.ico].c;
    await store.set("couche",f.id||nid("n"),v);logAct("carte",(f.id?"Modifié : ":"Ajouté : ")+kindL.toLowerCase()+" « "+v.name+" »");closeSheet()}catch(e){b.disabled=false;$("#fErr").textContent="Enregistrement impossible."}};
  const sh=$("#fShape");if(sh)sh.onclick=()=>{closeSheet();editShape(f)};
+ const cv=$("#fConv");if(cv)cv.onclick=async()=>{cv.disabled=true;await store.upd("couche",f.id,{kind:"ligne",sect:f.sect||curSect});logAct("carte","Relevé converti en ligne : « "+f.name+" »");closeSheet()};
  const del=$("#fDel");if(del)del.onclick=()=>{$("#fConf").innerHTML=`<div class="row" style="margin-top:10px"><span>Supprimer « ${esc(f.name)} » de la carte ?</span><button class="btn red" id="fDel2">Oui, supprimer</button></div>`;
   $("#fDel2").onclick=async()=>{await seedBase();await store.del("couche",f.id);logAct("carte","Supprimé de la carte : "+kindL.toLowerCase()+" « "+f.name+" »");closeSheet()}};
 }
 function editShape(f){const c=ll(dec(f.c));let tmp;
  if(f.kind==="point"){tmp=L.marker(c[0],{draggable:true,icon:L.divIcon({className:"",html:'<div style="width:26px;height:26px;border-radius:50%;background:#ff3b22;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>',iconSize:[26,26],iconAnchor:[13,13]})}).addTo(gTmp);map.setView(c[0],Math.max(map.getZoom(),18))}
- else{tmp=(f.kind==="ligne"?L.polyline(c,{color:"#ff3b22",weight:4,pmIgnore:false}):L.polygon(c,{color:"#ff3b22",weight:3,fillOpacity:.15,pmIgnore:false})).addTo(map);tmp.pm.enable({allowSelfIntersection:true,snappable:false,removeVertexOn:"click"});map.fitBounds(tmp.getBounds(),{padding:[60,60],maxZoom:19})}
+ else{tmp=(f.kind==="ligne"||f.kind==="releve"?L.polyline(c,{color:"#ff3b22",weight:4,pmIgnore:false}):L.polygon(c,{color:"#ff3b22",weight:3,fillOpacity:.15,pmIgnore:false})).addTo(map);tmp.pm.enable({allowSelfIntersection:true,snappable:false,removeVertexOn:"click"});map.fitBounds(tmp.getBounds(),{padding:[60,60],maxZoom:19})}
  shapeEdit={f,tmp};$("#bAdd").style.display="none";
  banner(f.kind==="point"?"Glissez le point à sa nouvelle place":"Glissez les sommets; touchez un point milieu pour en ajouter, un sommet pour le retirer",6000);
  showDbar(`<button class="btn pri" id="sOk">Enregistrer le tracé</button><button class="btn" id="sCancel">Annuler</button>`);
