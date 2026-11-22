@@ -83,6 +83,7 @@ let sectors=[{id:DEF,nom:"Montagne Noire",ord:0}], curSect=ls.get("erab_sect",DE
 const sectOf=x=>x.sect||DEF;
 const sectName=id=>(sectors.find(x=>x.id===id)||{}).nom||id;
 let layer = baseLayer, layerIsDb = false, lines=[], zones=[], pts=[], stations=[];
+const okF=f=>{try{const c=dec(f.c);return c.length>0&&c.every(p=>isFinite(p[0])&&isFinite(p[1]))}catch(e){return false}};
 function derive(){layer=allLayer.filter(f=>sectOf(f)===curSect);const F=layer.slice().sort((a,b)=>(a.ord??0)-(b.ord??0));
  lines=F.filter(f=>f.kind==="ligne").map(f=>{const c=dec(f.c);let len=0;for(let i=1;i<c.length;i++)len+=hav(c[i-1],c[i]);return {...f,coords:c,len,label:/^\d+$/.test(f.name)?"Ligne "+f.name:(f.name||"Ligne sans nom")}}).filter(l=>l.coords.length>1);
  lines.forEach(l=>{const same=lines.filter(o=>o.label===l.label);if(same.length>1)l.label+=" ("+(same.indexOf(l)+1)+")"});
@@ -309,7 +310,7 @@ async function seedBase(){if(layerIsDb)return;for(const f of baseLayer){const {i
 function startData(){
  store.sub("obs",(list,m)=>{obsAll=list.sort((a,b)=>String(b.at).localeCompare(String(a.at)));obs=obsAll.filter(o=>sectOf(o)===curSect);pending=!!m.hasPendingWrites;syncState();drawObs();render();dRefresh()});
  store.sub("lignes",list=>{lstate={};list.forEach(d=>lstate[d.id]=d);drawBase();render();dRefresh()});
- store.sub("couche",(list,m)=>{if(!list.length){if(m.fromCache)return;allLayer=baseLayer;layerIsDb=false;if(isEd())seedBase()}else{allLayer=list;layerIsDb=true}derive();drawBase();drawObs();render();dRefresh()});
+ store.sub("couche",(list,m)=>{if(!list.length){if(m.fromCache)return;allLayer=baseLayer;layerIsDb=false;if(isEd())seedBase()}else{allLayer=list.filter(okF);layerIsDb=true}derive();drawBase();drawObs();render();dRefresh()});
  store.sub("secteurs",(list,m)=>{if(list.length)sectors=list.sort((a,b)=>(a.ord??0)-(b.ord??0));else if(!m.fromCache&&isEd())store.set("secteurs",DEF,{nom:"Montagne Noire",ord:0});if(!sectors.find(x=>x.id===curSect))curSect=sectors[0].id;sectUI();try{drawBase()}catch(e){}});
  store.sub("activite",(list,m)=>{const ids=new Set(acts.map(a=>a.id));const fresh=actsReady?list.filter(a=>!ids.has(a.id)&&a.by!==me.uid):[];acts=list;actsReady=true;bell();if(tab==="activite")render();if(fresh.length)banner((fresh[0].byName?fresh[0].byName+" : ":"")+fresh[0].text,6000)},{order:"at",lim:80});
  store.sub("heures",list=>{heures=list;if(tab==="heures")render();dRefresh()});
@@ -627,7 +628,7 @@ function editShape(f){const c=ll(dec(f.c));let tmp;
  banner(f.kind==="point"?"Glissez le point à sa nouvelle place":"Glissez les sommets; touchez un point milieu pour en ajouter, un sommet pour le retirer",6000);
  showDbar(`<button class="btn pri" id="sOk">Enregistrer le tracé</button><button class="btn" id="sCancel">Annuler</button>`);
  $("#sCancel").onclick=stopShape;
- $("#sOk").onclick=async()=>{let p;if(f.kind==="point"){const q=tmp.getLatLng();p=[[q.lng,q.lat]]}else{let a=tmp.getLatLngs();if(f.kind==="zone")a=a[0];p=a.map(q=>[q.lng,q.lat])}
+ $("#sOk").onclick=async()=>{let p;if(f.kind==="point"){const q=tmp.getLatLng();p=[[q.lng,q.lat]]}else{let a=tmp.getLatLngs();while(Array.isArray(a[0]))a=a[0];p=a.map(q=>[q.lng,q.lat])}
   await seedBase();const upd={c:enc(p)};if(f.kind==="zone")upd.ha=+areaHa(p).toFixed(1);await store.upd("couche",f.id,upd);logAct("carte","Tracé modifié : « "+f.name+" »");stopShape()}}
 function stopShape(){if(shapeEdit){try{shapeEdit.tmp.pm&&shapeEdit.tmp.pm.disable()}catch(e){}shapeEdit.tmp.remove();shapeEdit=null}gTmp.clearLayers();banner("");hideDbar();$("#bAdd").style.display=editMode?"none":""}
 
