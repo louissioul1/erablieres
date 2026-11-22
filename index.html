@@ -118,6 +118,8 @@ textarea{min-height:84px;resize:vertical}
 .valarm{animation:va 1.2s infinite}@keyframes va{50%{transform:scale(1.15)}}
 .asg{border:1px solid var(--line);border-radius:12px;padding:4px 12px 12px;margin:10px 0;background:color-mix(in srgb,#7a4fd6 5%,transparent)}
 .chip[data-pr][aria-pressed=true]{background:var(--c);border-color:var(--c);color:#fff}
+.chip[data-as]{border-color:var(--c)}.chip[data-as][aria-pressed=true]{background:var(--c);border-color:var(--c);color:#fff}
+.mdot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);margin-right:6px;vertical-align:middle;box-shadow:0 0 0 1.5px #fff8}.chip[data-as][aria-pressed=true] .mdot{background:#fff}
 .pulse{animation:pu 1.6s infinite}@keyframes pu{50%{stroke-opacity:.2}}
 img.ploading{background:linear-gradient(90deg,var(--chip) 25%,color-mix(in srgb,var(--chip) 60%,#fff) 50%,var(--chip) 75%);background-size:200% 100%;animation:pl 1.4s infinite linear}@keyframes pl{to{background-position:-200% 0}}
 .err{color:var(--maple);font-weight:600;font-size:14px;margin-top:8px}
