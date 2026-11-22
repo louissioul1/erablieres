@@ -167,7 +167,7 @@ function drawBase(){drawPot();drawPrev();gZones.clearLayers();gLines.clearLayers
  stations.forEach(s=>L.polygon(ll(s.coords),{color:"#ffffff",weight:2,fillColor:"#1f4a33",fillOpacity:.8}).bindTooltip(s.name||"Station",{direction:"top"}).on("click",e=>featClick(s,e,()=>{})).addTo(gZones));
  lines.forEach(l=>{const st=lst(l.id).status||"ok",c=ll(l.coords);
   L.polyline(c,{color:lightBase()?"#fff":"#000",weight:st==="ok"?5:7,opacity:lightBase()?.7:.45,interactive:false}).addTo(gLines);
-  const vis=L.polyline(c,{color:st==="ok"&&lightBase()?"#1f4a33":LSTAT[st].h,weight:st==="ok"?3:5,opacity:1,dashArray:st==="verif"?"8 6":null,interactive:false}).addTo(gLines);
+  const vis=L.polyline(c,{color:st==="ok"&&l.src==="swmaps"?(l.color||"#e040fb"):st==="ok"&&lightBase()?"#1f4a33":LSTAT[st].h,weight:st==="ok"?3:5,opacity:1,dashArray:st==="verif"?"8 6":null,interactive:false}).addTo(gLines);
   const hit=L.polyline(c,{color:"#000",opacity:0,weight:22}).bindTooltip(l.label+" · "+fmtM(l.len),{sticky:true}).on("click",e=>featClick(l,e,()=>openLine(l))).addTo(gLines);
   lineLayers[l.id]={vis,hit}});
  gRel.clearLayers();if(relOn)allLayer.filter(f=>f.kind==="releve").forEach(f=>{const c=ll(dec(f.c));if(c.length<2)return;let len=0;const d=dec(f.c);for(let i=1;i<d.length;i++)len+=hav(d[i-1],d[i]);
